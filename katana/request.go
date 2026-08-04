@@ -518,9 +518,10 @@ func (s *katanaSigner) cancelByWalletHash(nonce *big.Int, wallet string) ([]byte
 	return s.hashTypedData(td)
 }
 
-// signCancelByWallet signs a cancel-every-open-order request. No action calls it yet — the
-// connector only ever cancels by order id — but it is kept signed-and-tested so a future
-// cancel-all does not have to re-derive an EIP-712 type block under time pressure.
+// signCancelByWallet and signCancelByMarket sign the two cancel-all variants. No action calls
+// either yet — the connector only ever cancels by order id — but both are kept signed and
+// golden-vector tested so a future cancel-all does not have to re-derive an EIP-712 type block
+// under time pressure.
 func (s *katanaSigner) signCancelByWallet(nonce *big.Int, wallet string) (string, error) {
 	td, err := s.cancelByWalletTypedData(nonce, wallet)
 	if err != nil {

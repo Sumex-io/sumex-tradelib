@@ -142,10 +142,6 @@ func (s *futures_setLeverage) Do(ctx context.Context, opts ...utils.RequestOptio
 	return s.convert.convertLeverage(symbol, confirmedLeverage), nil
 }
 
-// An IMF above 1 means LESS than 1x leverage, which Katana rejects outright ("Override value,
-// between 1 and the market's initialMarginFraction").
-var clampIMFOverrideUpperBound = big.NewFloat(1)
-
 // clampIMFToMarketFloor enforces both bounds on a leverage override. An override may only TIGHTEN
 // ("initial margin fraction may only be increased from the market default"), and since
 // leverage = 1/IMF, a higher IMF is a lower leverage — so the market's own default IMF is the
@@ -160,9 +156,12 @@ func clampIMFToMarketFloor(requestedIMF, marketDefaultIMF string) (string, error
 	if err != nil {
 		return "", err
 	}
+	// An IMF above 1 means LESS than 1x leverage, which Katana rejects outright ("Override value,
+	// between 1 and the market's initialMarginFraction").
+	ceiling := big.NewFloat(1)
 	switch {
-	case requested.Cmp(clampIMFOverrideUpperBound) > 0:
-		return formatDecimal8(clampIMFOverrideUpperBound), nil
+	case requested.Cmp(ceiling) > 0:
+		return formatDecimal8(ceiling), nil
 	case requested.Cmp(floor) < 0:
 		return formatDecimal8(floor), nil
 	default:

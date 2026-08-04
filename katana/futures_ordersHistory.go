@@ -108,6 +108,13 @@ func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOpt
 	}
 
 	out := s.convert.convertOrdersHistory(answ)
+	// The loop below lands each order's aggregated fee and PnL by index, so out[i] must correspond
+	// to answ[i]. convertOrdersHistory maps 1:1 today — unlike convertPositions, which filters —
+	// and this guard is what makes a future filter there a loud failure instead of money reported
+	// against the wrong order.
+	if len(out) != len(answ) {
+		return res, fmt.Errorf("katana: ordersHistory mapped %d of %d orders; fee and realised PnL cannot be aligned by index", len(out), len(answ))
+	}
 
 	var unknown unknownMarketTally
 	for i := range out {
@@ -204,9 +211,9 @@ func resolveMissingOrderFills(
 }
 
 // quantityReconciles reports whether fills' summed Quantity reaches executedQuantity within one
-// stepSize of dust. Every unreadable input fails CLOSED — an unparseable executedQuantity or
-// stepSize routes to the authoritative per-order fetch instead of accepting a possibly partial
-// bucket.
+// stepSize of dust. Unreadable input fails CLOSED: an unparseable executedQuantity routes to the
+// authoritative per-order fetch, and an unparseable stepSize leaves a zero tolerance, so only an
+// exact match is accepted rather than a possibly partial bucket.
 func quantityReconciles(fills []katanaFill, executedQuantity, stepSize string) bool {
 	executed, err := parseBigFloat(executedQuantity)
 	if err != nil {

@@ -16,7 +16,6 @@ type futures_amendOrder struct {
 	callAPI       func(ctx context.Context, r *utils.Request, opts ...utils.RequestOption) (data []byte, header *http.Header, err error)
 	convert       futures_converts
 	resolveWallet func(ctx context.Context, opts ...utils.RequestOption) (string, error)
-	markets       func(ctx context.Context, opts ...utils.RequestOption) (map[string]Market, error)
 	sign          *katanaSigner
 	brokerID      string
 

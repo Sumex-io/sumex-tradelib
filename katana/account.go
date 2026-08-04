@@ -13,13 +13,10 @@ import (
 // The two account-level actions every exchange in this library is expected to answer. They live
 // here rather than under a spot_ prefix because Katana is PERPETUALS ONLY: it lists no spot markets
 // at all, so both clients expose exactly these two and no spot trading action exists to be called.
-// The original connector had to reject spot trading at a dispatcher; here the rejection is
-// structural — SpotClient offers no order, position or balance action to reach in the first place.
 
 // ===================GetAccountInfo==================
 
 type getAccountInfo struct {
-	callAPI       func(ctx context.Context, r *utils.Request, opts ...utils.RequestOption) (data []byte, header *http.Header, err error)
 	convert       account_converts
 	resolveWallet func(ctx context.Context, opts ...utils.RequestOption) (string, error)
 	sign          *katanaSigner
@@ -53,8 +50,7 @@ type signAuthStream struct {
 
 // TimeStamp is accepted for parity with every other connector's signAuthStream, but Katana has
 // nothing to do with it: its token is minted server-side with no timestamp input, and
-// entity.SignAuthStream carries only a Signature. The original connector echoed the caller's
-// timestamp back in its own response struct; that field has no counterpart here.
+// entity.SignAuthStream carries only a Signature for it to land in.
 func (s *signAuthStream) TimeStamp(timeStamp int64) *signAuthStream {
 	s.timeStamp = &timeStamp
 	return s

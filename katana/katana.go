@@ -58,12 +58,9 @@ type SpotClient struct {
 	logger     *log.Logger
 	TimeOffset int64
 
-	// Caches for the two values every action has to resolve before it can build a request.
-	// They are per client, so a long-lived client refetches at most once per cacheTTL.
-	marketsMu       sync.Mutex
-	marketsCache    map[string]Market
-	marketsCachedAt time.Time
-
+	// Only the wallet is cached here: no SpotClient action reads the market catalog, because
+	// Katana lists no spot markets. The cache is per client, so a long-lived client refetches at
+	// most once per cacheTTL.
 	walletMu       sync.Mutex
 	walletCache    string
 	walletCachedAt time.Time
@@ -111,7 +108,6 @@ func (c *SpotClient) signer() *katanaSigner {
 
 func (c *SpotClient) NewGetAccountInfo() *getAccountInfo {
 	return &getAccountInfo{
-		callAPI:       c.callAPI,
 		resolveWallet: c.resolveWallet,
 		sign:          c.signer(),
 	}
@@ -184,7 +180,6 @@ func (c *FuturesClient) signer() *katanaSigner {
 
 func (c *FuturesClient) NewGetAccountInfo() *getAccountInfo {
 	return &getAccountInfo{
-		callAPI:       c.callAPI,
 		resolveWallet: c.resolveWallet,
 		sign:          c.signer(),
 	}
@@ -268,7 +263,6 @@ func (c *FuturesClient) NewPlaceOrder() *futures_placeOrder {
 	return &futures_placeOrder{
 		callAPI:       c.callAPI,
 		resolveWallet: c.resolveWallet,
-		markets:       c.markets,
 		sign:          c.signer(),
 		brokerID:      c.BrokerID,
 	}
@@ -278,7 +272,6 @@ func (c *FuturesClient) NewAmendOrder() *futures_amendOrder {
 	return &futures_amendOrder{
 		callAPI:       c.callAPI,
 		resolveWallet: c.resolveWallet,
-		markets:       c.markets,
 		sign:          c.signer(),
 		brokerID:      c.BrokerID,
 	}
@@ -389,35 +382,6 @@ func (c *FuturesClient) cacheWallet(wallet string) string {
 	return wallet
 }
 
-func (c *SpotClient) markets(ctx context.Context, opts ...utils.RequestOption) (map[string]Market, error) {
-	c.marketsMu.Lock()
-	if c.marketsCache != nil && time.Since(c.marketsCachedAt) < cacheTTL {
-		cached := c.marketsCache
-		c.marketsMu.Unlock()
-		return cached, nil
-	}
-	c.marketsMu.Unlock()
-
-	data, _, err := c.callAPI(ctx, marketsRequest(), opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	var raw []Market
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, err
-	}
-
-	out := filterTradableMarkets(raw)
-
-	c.marketsMu.Lock()
-	c.marketsCache = out
-	c.marketsCachedAt = time.Now()
-	c.marketsMu.Unlock()
-
-	return out, nil
-}
-
 func (c *SpotClient) resolveWallet(ctx context.Context, opts ...utils.RequestOption) (string, error) {
 	c.walletMu.Lock()
 	if c.walletCache != "" && time.Since(c.walletCachedAt) < cacheTTL {
@@ -457,8 +421,8 @@ func (c *SpotClient) cacheWallet(wallet string) string {
 	return wallet
 }
 
-// marketsRequest and walletsRequest are the request halves the two resolvers share, so the twin
-// SpotClient/FuturesClient copies above cannot drift apart on an endpoint or a query parameter.
+// walletsRequest is the request half the twin SpotClient/FuturesClient resolveWallet copies above
+// share, so they cannot drift apart on an endpoint or a query parameter.
 func marketsRequest() *utils.Request {
 	return &utils.Request{
 		Method:   http.MethodGet,
@@ -508,6 +472,3 @@ func pickWallet(wallets []katanaWallet) (string, error) {
 		return "", errors.New("multiple funded Katana wallets on this API account")
 	}
 }
-
-// Each action builder the factories above return now lives in its own <scope>_<action>.go
-// alongside its option setters and its Do method, exactly as hyperliquid/ lays them out.
