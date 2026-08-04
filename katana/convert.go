@@ -125,6 +125,14 @@ type katanaFill struct {
 	ClientOrderId string `json:"clientOrderId,omitempty"`
 }
 
+// katanaCancelResult is the DELETE /v1/orders per-order response object (API_NOTES.md section A).
+// orderId is absent when a `notFound` order was specified by clientOrderId.
+type katanaCancelResult struct {
+	OrderId       string `json:"orderId,omitempty"`
+	ClientOrderId string `json:"clientOrderId,omitempty"`
+	Status        string `json:"status"`
+}
+
 // katanaWallet is the GET /v1/wallets response object (API_NOTES.md section A). Quantity holds the
 // wire's "quoteBalance", the vbUSDC actually held; EquityUSD holds "equity", which nets in
 // unrealized PnL. The two must stay separate — the frontend renders both.
@@ -684,6 +692,7 @@ func toUserTrade(f katanaFill) entity.Futures_UserTrades {
 		RealisedProfit:  f.RealizedPnL,
 		Buyer:           side == "BUY",
 		Maker:           strings.EqualFold(strings.TrimSpace(f.Liquidity), "maker"),
+		BuilderFee:      strings.TrimSpace(f.BuilderFee),
 		Time:            f.Time,
 	}
 }
@@ -774,11 +783,27 @@ func (c *futures_converts) convertOrdersHistory(in []katanaOrder) (out []entity.
 	return out
 }
 
-func (c *futures_converts) convertPositionsHistory(in []katanaFill, leverage string) (out []entity.Futures_PositionsHistory) {
+// convertPositionsHistory resolves each row's leverage from the fill's OWN market, mirroring
+// convertPositions: a page of closing fills can span several markets, and one leverage applied to
+// all of them would report another market's number. Plain imfToLeverage, not effectiveIMFForSize —
+// a fill's quantity is what closed, not the position size the tier schedule keys on. overrides may
+// be nil. An unknown market leaves that row's leverage empty rather than failing the response.
+func (c *futures_converts) convertPositionsHistory(in []katanaFill, mkts map[string]Market, overrides map[string]string) (out []entity.Futures_PositionsHistory) {
+	var unknown unknownMarketTally
 	out = make([]entity.Futures_PositionsHistory, 0, len(in))
 	for _, f := range in {
+		leverage := ""
+		m, ok := effectiveMarket(mkts, overrides, f.Market)
+		if ok {
+			if lev, lerr := imfToLeverage(m.InitialMarginFraction); lerr == nil {
+				leverage = lev
+			}
+		} else {
+			unknown.add(f.Market)
+		}
 		out = append(out, toPositionHistory(f, leverage))
 	}
+	unknown.log("fill(s)")
 	return out
 }
 
@@ -808,5 +833,33 @@ func (c *futures_converts) convertPositionMode() (out entity.Futures_PositionsMo
 // convertMarginMode answers from an invariant: Katana is cross-margin only.
 func (c *futures_converts) convertMarginMode() (out entity.Futures_MarginMode) {
 	out.MarginMode = "CROSS"
+	return out
+}
+
+// convertPlaceOrder maps the standard order response POST /v1/orders returns to the single-entry
+// slice the place/amend contract expects. PositionID stays empty: Katana nets one position per
+// market and has no position id to report, exactly as toPosition explains.
+func (c *futures_converts) convertPlaceOrder(in katanaOrder) (out []entity.PlaceOrder) {
+	return []entity.PlaceOrder{
+		{
+			OrderID:       in.OrderId,
+			ClientOrderID: in.ClientOrderId,
+			Ts:            in.Time,
+		},
+	}
+}
+
+// convertCancelOrder maps DELETE /v1/orders results. ts is client-observed and supplied by the
+// caller: the response carries only orderId/clientOrderId/status, so no exchange timestamp exists.
+// Confirming the `status` is the ACTION's job — a row reaching here is already confirmed canceled.
+func (c *futures_converts) convertCancelOrder(in []katanaCancelResult, ts int64) (out []entity.PlaceOrder) {
+	out = make([]entity.PlaceOrder, 0, len(in))
+	for _, item := range in {
+		out = append(out, entity.PlaceOrder{
+			OrderID:       item.OrderId,
+			ClientOrderID: item.ClientOrderId,
+			Ts:            ts,
+		})
+	}
 	return out
 }
