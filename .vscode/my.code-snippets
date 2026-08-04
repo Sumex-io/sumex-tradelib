@@ -1,0 +1,18 @@
+{
+	"Consolelog": {
+		"scope": "go",
+		"prefix": "_log",
+		"body": [
+			"log.Println(\"=$RANDOM_HEX=\",${1})"
+		],
+		"description": "Лог с рандомным указателем"
+	},
+	"ConsolelogV": {
+		"scope": "go",
+		"prefix": "_lv",
+		"body": [
+			"log.Printf(\"=$RANDOM_HEX= %+v\",${1})"
+		],
+		"description": "Лог с рандомным указателем +v"
+	}
+}
