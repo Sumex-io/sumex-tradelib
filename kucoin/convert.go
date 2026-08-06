@@ -277,7 +277,7 @@ func (c *futures_converts) convertPositions(answ []futures_Position) (res []enti
 			Symbol:           item.Symbol,
 			PositionSide:     positionSide,
 			PositionSize:     utils.FloatToStringAll(item.CurrentQty),
-			Leverage:         utils.Int64ToString(item.Leverage),
+			Leverage:         utils.FloatToStringAll(item.Leverage),
 			PositionID:       item.ID,
 			EntryPrice:       utils.FloatToStringAll(item.AvgEntryPrice),
 			MarkPrice:        utils.FloatToStringAll(item.MarkPrice),

@@ -50,7 +50,7 @@ type futures_Position struct {
 	RealisedPnl      float64 `json:"realisedPnl"`
 	UnrealisedPnl    float64 `json:"unrealisedPnl"`
 	AvgEntryPrice    float64 `json:"avgEntryPrice"`
-	Leverage         int64   `json:"leverage"`
+	Leverage         float64 `json:"leverage"`
 	OpeningTimestamp int64   `json:"openingTimestamp"`
 	CurrentTimestamp int64   `json:"currentTimestamp"`
 }
