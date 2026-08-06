@@ -1,4 +1,4 @@
-module github.com/Betarost/onetrades
+module github.com/Sumex-io/sumex-tradelib
 
 go 1.24.0
 

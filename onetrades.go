@@ -1,16 +1,16 @@
 package onetrades
 
 import (
-	"github.com/Betarost/onetrades/binance"
-	"github.com/Betarost/onetrades/bingx"
-	"github.com/Betarost/onetrades/bitget"
-	"github.com/Betarost/onetrades/bullish"
-	"github.com/Betarost/onetrades/bybit"
-	"github.com/Betarost/onetrades/gateio"
-	"github.com/Betarost/onetrades/huobi"
-	"github.com/Betarost/onetrades/kucoin"
-	"github.com/Betarost/onetrades/mexc"
-	"github.com/Betarost/onetrades/okx"
+	"github.com/Sumex-io/sumex-tradelib/binance"
+	"github.com/Sumex-io/sumex-tradelib/bingx"
+	"github.com/Sumex-io/sumex-tradelib/bitget"
+	"github.com/Sumex-io/sumex-tradelib/bullish"
+	"github.com/Sumex-io/sumex-tradelib/bybit"
+	"github.com/Sumex-io/sumex-tradelib/gateio"
+	"github.com/Sumex-io/sumex-tradelib/huobi"
+	"github.com/Sumex-io/sumex-tradelib/kucoin"
+	"github.com/Sumex-io/sumex-tradelib/mexc"
+	"github.com/Sumex-io/sumex-tradelib/okx"
 )
 
 // Общие креды для всех бирж

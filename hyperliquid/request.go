@@ -13,7 +13,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Betarost/onetrades/utils"
+	"github.com/Sumex-io/sumex-tradelib/utils"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"

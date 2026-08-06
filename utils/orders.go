@@ -3,7 +3,7 @@ package utils
 import (
 	"strings"
 
-	"github.com/Betarost/onetrades/entity"
+	"github.com/Sumex-io/sumex-tradelib/entity"
 )
 
 // DeriveTPFromOpenOrders ищет TP по открытым ордерам под конкретную сторону позиции
