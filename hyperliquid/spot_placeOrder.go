@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Betarost/onetrades/entity"
-	"github.com/Betarost/onetrades/utils"
+	"github.com/Sumex-io/sumex-tradelib/entity"
+	"github.com/Sumex-io/sumex-tradelib/utils"
 )
 
 type spot_placeOrder struct {

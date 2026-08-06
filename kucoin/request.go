@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Betarost/onetrades/utils"
+	"github.com/Sumex-io/sumex-tradelib/utils"
 )
 
 type aPIError struct {

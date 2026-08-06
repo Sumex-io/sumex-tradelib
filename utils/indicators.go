@@ -1,8 +1,8 @@
 package utils
 
 import (
-	"github.com/Betarost/onetrades/entity"
 	"github.com/MicahParks/go-rsi/v2"
+	"github.com/Sumex-io/sumex-tradelib/entity"
 )
 
 func CalculateRSI(candles []entity.Futures_MarketCandle, period int, limit int) (rsiArr []entity.RSI) {
