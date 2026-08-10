@@ -2216,3 +2216,28 @@ func TestResolveIMFOverridesBestEffortPassesThroughOnSuccess(t *testing.T) {
 		t.Fatalf("got %v, want ETH-USD override 0.20000000", got)
 	}
 }
+
+// Asserted on the wire: a credential attached to a Public endpoint is only visible in the headers
+// that actually left, and Katana rejects a key it cannot validate.
+func TestGetInstrumentsInfoSendsNoCredentialsOnThePublicMarketsEndpoint(t *testing.T) {
+	var gotAPIKey, gotSignature string
+	server := muxServer(t, map[string]http.HandlerFunc{
+		"/v1/markets": func(w http.ResponseWriter, r *http.Request) {
+			gotAPIKey = r.Header.Get("KP-API-KEY")
+			gotSignature = r.Header.Get("KP-HMAC-SIGNATURE")
+			writeJSON(t, w, twoMarketsFixture)
+		},
+	})
+	defer server.Close()
+
+	if _, err := newTestFuturesClient(server.URL).NewGetInstrumentsInfo().Do(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if gotAPIKey != "" {
+		t.Fatalf("KP-API-KEY = %q, want it absent on a public endpoint", gotAPIKey)
+	}
+	if gotSignature != "" {
+		t.Fatalf("KP-HMAC-SIGNATURE = %q, want it absent on a public endpoint", gotSignature)
+	}
+}
