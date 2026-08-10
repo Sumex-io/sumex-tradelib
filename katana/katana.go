@@ -421,16 +421,18 @@ func (c *SpotClient) cacheWallet(wallet string) string {
 	return wallet
 }
 
-// walletsRequest is the request half the twin SpotClient/FuturesClient resolveWallet copies above
-// share, so they cannot drift apart on an endpoint or a query parameter.
+// Unsigned: /v1/markets is Public tier, and signing it makes Katana validate the key, which fails
+// for callers that legitimately hold none. A key would only raise the rate limit here.
 func marketsRequest() *utils.Request {
 	return &utils.Request{
 		Method:   http.MethodGet,
 		Endpoint: "/v1/markets",
-		SecType:  utils.SecTypeSigned,
+		SecType:  utils.SecTypeNone,
 	}
 }
 
+// walletsRequest is the request half the twin SpotClient/FuturesClient resolveWallet copies above
+// share, so they cannot drift apart on an endpoint or a query parameter.
 func walletsRequest() (*utils.Request, error) {
 	nonce, _, err := newNonce()
 	if err != nil {

@@ -113,9 +113,10 @@ func TestPostSignsExactRequestBodyBytes(t *testing.T) {
 	}
 }
 
-// TestGetOmitsTheQuerySeparatorWhenThereIsNoQuery: markets() calls the transport with no query at
-// all, which must not append a bare "?" to the request URL. The HMAC is signed over the query
-// string either way, so the signature must be unchanged — that is asserted here too, not assumed.
+// TestGetOmitsTheQuerySeparatorWhenThereIsNoQuery: a GET carrying no query at all must not append
+// a bare "?" to the request URL. The HMAC is signed over the query string either way, so the
+// signature must be unchanged — that is asserted here too, not assumed. The request is built
+// inline because the subject is the signed transport path, not any particular endpoint.
 func TestGetOmitsTheQuerySeparatorWhenThereIsNoQuery(t *testing.T) {
 	var gotRawQuery, gotRequestURI, gotSignature string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -130,7 +131,12 @@ func TestGetOmitsTheQuerySeparatorWhenThereIsNoQuery(t *testing.T) {
 	c := NewFuturesClient("key", "topsecret", "")
 	c.BaseURL = server.URL
 
-	if _, _, err := c.callAPI(context.Background(), marketsRequest()); err != nil {
+	signedNoQuery := &utils.Request{
+		Method:   http.MethodGet,
+		Endpoint: "/v1/markets",
+		SecType:  utils.SecTypeSigned,
+	}
+	if _, _, err := c.callAPI(context.Background(), signedNoQuery); err != nil {
 		t.Fatal(err)
 	}
 	if gotRequestURI != "/v1/markets" {
