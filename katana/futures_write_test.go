@@ -462,8 +462,10 @@ func TestPlaceOrderMarketBuySendsStringBodyAndIntegerSignature(t *testing.T) {
 	if p.ReduceOnly {
 		t.Fatal("reduceOnly = true, want false for a plain (non-TP/SL) order with no reduceOnly requested")
 	}
-	if p.TimeInForce != "gtc" {
-		t.Fatalf("timeInForce = %q, want gtc", p.TimeInForce)
+	// Absent on the wire but present in the signature: the recomputation below still passes
+	// timeInForceGTC, and it must still match. Katana scopes the field to limit orders.
+	if p.TimeInForce != "" {
+		t.Fatalf("timeInForce = %q, want it absent on a market order", p.TimeInForce)
 	}
 	if p.SelfTradePrevention != "dc" {
 		t.Fatalf("selfTradePrevention = %q, want dc", p.SelfTradePrevention)
@@ -2090,5 +2092,70 @@ func TestSetLeveragePropagatesEndpointError(t *testing.T) {
 
 	if _, err := c.NewSetLeverage().Symbol("ETH-USD").Leverage("5").Do(context.Background()); err == nil {
 		t.Fatal("expected setLeverage to propagate a non-2xx response")
+	}
+}
+
+// Katana scopes timeInForce to limit orders on both the request and the response, and rejects a
+// market order that carries it ("invalid value provided for request parameter
+// parameters.timeInForce"). The two triggered *Market variants fill at market too, so they are
+// covered by the same rule -- and were the ones most likely to be missed.
+func TestPlaceOrderOmitsTimeInForceOnEveryMarketVariantButKeepsItOnLimits(t *testing.T) {
+	cases := []struct {
+		name          string
+		orderType     entity.OrderType
+		price         string
+		tpPrice       string
+		slPrice       string
+		wantWireType  string
+		wantOnTheWire string
+	}{
+		{name: "market", orderType: entity.OrderTypeMarket, wantWireType: "market", wantOnTheWire: ""},
+		{name: "limit", orderType: entity.OrderTypeLimit, price: "2500.00", wantWireType: "limit", wantOnTheWire: "gtc"},
+		{name: "takeProfitMarket", orderType: entity.OrderTypeMarket, tpPrice: "3000.00", wantWireType: "takeProfitMarket", wantOnTheWire: ""},
+		{name: "stopLossMarket", orderType: entity.OrderTypeMarket, slPrice: "2000.00", wantWireType: "stopLossMarket", wantOnTheWire: ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var captured katanaSignedRequest[katanaPlaceOrderParams]
+			server := muxServer(t, map[string]http.HandlerFunc{
+				"/v1/wallets": func(w http.ResponseWriter, r *http.Request) { writeJSON(t, w, signedWalletFixture) },
+				"POST /v1/orders": func(w http.ResponseWriter, r *http.Request) {
+					captured = readSignedBody[katanaPlaceOrderParams](t, r)
+					writeJSON(t, w, placedOrderFixture)
+				},
+			})
+			defer server.Close()
+
+			req := newSigningFuturesClient(server.URL).NewPlaceOrder().
+				Symbol("ETH-USD").
+				Side(entity.SideTypeBuy).
+				Size("1.00000000").
+				OrderType(tc.orderType)
+			if tc.price != "" {
+				req = req.Price(tc.price)
+			}
+			if tc.tpPrice != "" {
+				req = req.TpOrder(true).TpPrice(tc.tpPrice)
+			}
+			if tc.slPrice != "" {
+				req = req.SlOrder(true).SlPrice(tc.slPrice)
+			}
+			if _, err := req.Do(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+
+			p := captured.Parameters
+			if p.Type != tc.wantWireType {
+				t.Fatalf("type = %q, want %q", p.Type, tc.wantWireType)
+			}
+			if p.TimeInForce != tc.wantOnTheWire {
+				t.Fatalf("timeInForce = %q, want %q for a %s order", p.TimeInForce, tc.wantOnTheWire, tc.wantWireType)
+			}
+			// selfTradePrevention is NOT scoped to limit orders and must survive on every variant.
+			if p.SelfTradePrevention != "dc" {
+				t.Fatalf("selfTradePrevention = %q, want dc on a %s order", p.SelfTradePrevention, tc.wantWireType)
+			}
+		})
 	}
 }

@@ -252,6 +252,12 @@ const (
 	orderTypeNameTakeProfitLimit  = "takeProfitLimit"
 )
 
+// isMarketOrderType reports whether an order fills at market rather than resting on the book.
+// Covers the two triggered variants as well: a stop-loss/take-profit *Market* also fills at market.
+func isMarketOrderType(typeCode uint8) bool {
+	return typeCode == orderTypeMarket || typeCode == orderTypeStopLossMarket || typeCode == orderTypeTakeProfitMarket
+}
+
 const (
 	orderSideBuy  uint8 = 0
 	orderSideSell uint8 = 1
@@ -536,6 +542,16 @@ func submitOrder(
 		return katanaOrder{}, err
 	}
 
+	// The one place the wire and the signature deliberately differ. Katana scopes timeInForce to
+	// limit orders on both the request and the response, and rejects a market order carrying it
+	// ("invalid value provided for request parameter parameters.timeInForce"). Position 12 of the
+	// signed Order struct is mandatory, though, so the code above stays in the signature while the
+	// body omits it -- `omitempty` drops the field once the string is empty.
+	timeInForceOnWire := o.TimeInForceOnWire
+	if isMarketOrderType(o.TypeCode) {
+		timeInForceOnWire = ""
+	}
+
 	body := katanaSignedRequest[katanaPlaceOrderParams]{
 		Parameters: katanaPlaceOrderParams{
 			Nonce:               nonceStr,
@@ -550,7 +566,7 @@ func submitOrder(
 			TriggerType:         o.TriggerTypeOnWire,
 			ClientOrderId:       o.ClientOrderID,
 			ReduceOnly:          o.ReduceOnly,
-			TimeInForce:         o.TimeInForceOnWire,
+			TimeInForce:         timeInForceOnWire,
 			SelfTradePrevention: o.SelfTradePreventionOnWire,
 		},
 		Signature: sig,
