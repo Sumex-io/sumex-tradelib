@@ -248,6 +248,39 @@ func TestGetPositionsFiltersPhantomAndAppliesOverrideLeverage(t *testing.T) {
 	}
 }
 
+// adlQuintile is documented as a quoted string but production sends a bare number. A string target
+// failed the whole decode ("cannot unmarshal number into Go struct field katanaPosition.adlQuintile
+// of type string"), emptying the positions panel on a field nothing reads. Both shapes must decode.
+const positionsAdlQuintileShapesFixture = `[
+	{"market":"ETH-USD","quantity":"1.00000000","entryPrice":"2000.00000000","markPrice":"2100.00000000","realizedPnL":"0.00000000","unrealizedPnL":"100.00000000","adlQuintile":3,"time":1700000000000},
+	{"market":"ETH-USD","quantity":"-2.00000000","entryPrice":"2200.00000000","markPrice":"2100.00000000","realizedPnL":"0.00000000","unrealizedPnL":"200.00000000","adlQuintile":"1","time":1699000000000}
+]`
+
+func TestGetPositionsDecodesAdlQuintileAsEitherNumberOrString(t *testing.T) {
+	server := muxServer(t, map[string]http.HandlerFunc{
+		"/v1/wallets": func(w http.ResponseWriter, r *http.Request) { writeJSON(t, w, singleWalletFixture) },
+		"/v1/markets": func(w http.ResponseWriter, r *http.Request) { writeJSON(t, w, twoMarketsFixture) },
+		"/v1/positions": func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(t, w, positionsAdlQuintileShapesFixture)
+		},
+		"/v1/initialMarginFractionOverride": func(w http.ResponseWriter, r *http.Request) { writeJSON(t, w, `[]`) },
+	})
+	defer server.Close()
+
+	c := newTestFuturesClient(server.URL)
+
+	got, err := c.NewGetPositions().Do(context.Background())
+	if err != nil {
+		t.Fatalf("decode failed on a valid positions page: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d positions, want 2 (neither adlQuintile shape may drop a row)", len(got))
+	}
+	if got[0].PositionSide != "LONG" || got[1].PositionSide != "SHORT" {
+		t.Fatalf("position sides = [%s, %s], want [LONG, SHORT]", got[0].PositionSide, got[1].PositionSide)
+	}
+}
+
 func TestGetPositionsScopesToTheCallerSymbol(t *testing.T) {
 	var gotMarket string
 	server := muxServer(t, map[string]http.HandlerFunc{
