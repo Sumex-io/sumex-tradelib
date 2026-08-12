@@ -1,6 +1,7 @@
 package katana
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
@@ -60,14 +61,18 @@ type katanaPosition struct {
 	// Deliberately unread: this wire field carries a margin fraction ("0.10828271"), not the
 	// multiplier "leverage" means everywhere else in this library. toPosition derives Leverage
 	// from the market's InitialMarginFraction instead.
-	Leverage       string `json:"leverage,omitempty"`
-	TotalFunding   string `json:"totalFunding,omitempty"`
-	TotalOpen      string `json:"totalOpen,omitempty"`
-	TotalClose     string `json:"totalClose,omitempty"`
-	AdlQuintile    string `json:"adlQuintile,omitempty"`
-	OpenedByFillId string `json:"openedByFillId,omitempty"`
-	LastFillId     string `json:"lastFillId,omitempty"`
-	Time           int64  `json:"time"`
+	Leverage     string `json:"leverage,omitempty"`
+	TotalFunding string `json:"totalFunding,omitempty"`
+	TotalOpen    string `json:"totalOpen,omitempty"`
+	TotalClose   string `json:"totalClose,omitempty"`
+	// Deliberately unread, and deliberately typed loosely. API_NOTES.md documents this as a quoted
+	// string ("1"), but production sends a bare number (1) and a string target fails the whole
+	// positions decode with "cannot unmarshal number into Go struct field". Nothing here reads the
+	// value, so RawMessage accepts either shape and keeps one wrong field from emptying the panel.
+	AdlQuintile    json.RawMessage `json:"adlQuintile,omitempty"`
+	OpenedByFillId string          `json:"openedByFillId,omitempty"`
+	LastFillId     string          `json:"lastFillId,omitempty"`
+	Time           int64           `json:"time"`
 }
 
 // katanaOrder is the "standard order response object" shared by POST /v1/orders, DELETE /v1/orders
