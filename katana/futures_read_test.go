@@ -112,8 +112,10 @@ func TestGetBalanceFetchesScopedWalletAndMapsToUSDC(t *testing.T) {
 	if gotWallet != "0xWALLET" {
 		t.Fatalf("wallet query param = %q, want 0xWALLET (getBalance must scope to the resolved wallet)", gotWallet)
 	}
+	// Balance is equity - unrealizedPnL (the collateral), not the fixture's quoteBalance: that wire
+	// field is a signed quote leg and goes deeply negative behind a leveraged position.
 	want := []entity.FuturesBalance{{
-		Asset: "USDC", Balance: "9500.00000000", Equity: "10000.00000000",
+		Asset: "USDC", Balance: "9900.00000000", Equity: "10000.00000000",
 		Available: "9000.00000000", UnrealizedProfit: "100.00000000",
 	}}
 	if len(got) != 1 || got[0] != want[0] {

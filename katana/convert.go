@@ -431,6 +431,19 @@ func mulAbsDecimal8(quantity, price string) string {
 	return formatDecimal8(product)
 }
 
+// subDecimal8 returns a - b formatted to 8 zero-padded decimals. Unparseable input degrades to a
+// trimmed `a` rather than "" or "0.00000000": the only caller is the balance row, where an empty
+// string renders as no account and a zero renders as an empty one, while `a` (equity) is the
+// closest honest number available.
+func subDecimal8(a, b string) string {
+	af, errA := parseBigFloat(a)
+	bf, errB := parseBigFloat(b)
+	if errA != nil || errB != nil {
+		return strings.TrimSpace(a)
+	}
+	return formatDecimal8(new(big.Float).SetPrec(bigPrec).Sub(af, bf))
+}
+
 // decimalPlaces counts significant fractional digits ("0.00000100" -> "6"), deriving size/
 // pricePrecision from stepSize/tickSize. Katana zero-pads to 8 decimals, so trailing zeros are not
 // significant.
@@ -617,11 +630,18 @@ func toOrderHistory(o katanaOrder) entity.Futures_OrdersHistory {
 
 // toBalance maps a katanaWallet to the single-entry slice the contract expects. Katana's only
 // collateral is vbUSDC, reported as "USDC" because dashboard, holdings and pricing key on that.
+//
+// Balance is NOT the wire's quoteBalance. That field is a signed quote leg: opening a leveraged
+// long drives it far below zero (3.63 USDC of collateral behind a 53.78 position reads about -50),
+// which is not a wallet balance in the sense every other exchange here means. Deriving it as
+// equity - unrealizedPnL instead matches the rest of the library, where Balance excludes unrealized
+// PnL and Equity includes it, and is non-negative by construction: equity IS collateral plus
+// unrealized PnL, so the difference is the collateral itself.
 func toBalance(w katanaWallet) []entity.FuturesBalance {
 	return []entity.FuturesBalance{
 		{
 			Asset:            "USDC",
-			Balance:          w.Quantity,
+			Balance:          subDecimal8(w.EquityUSD, w.UnrealizedPnL),
 			Equity:           w.EquityUSD,
 			Available:        w.FreeCollateral,
 			UnrealizedProfit: w.UnrealizedPnL,
