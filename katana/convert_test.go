@@ -75,7 +75,10 @@ func TestToBalanceMapsVbUsdcToUsdc(t *testing.T) {
 
 // --- Parsing and precision ---
 
-func TestToBalanceMapsEveryFieldLiterally(t *testing.T) {
+// Balance is derived as equity - unrealizedPnL, not read from the wire's quoteBalance. This
+// fixture happens to satisfy equity = quoteBalance + unrealizedPnL, so the derived value coincides
+// with Quantity here; the test below covers a wallet where it does not.
+func TestToBalanceDerivesBalanceAndMapsTheRestLiterally(t *testing.T) {
 	got := toBalance(katanaWallet{
 		Wallet: "0xabc", EquityUSD: "1500.00000000", FreeCollateral: "1200.00000000",
 		UnrealizedPnL: "50.00000000", Quantity: "1450.00000000",
@@ -89,6 +92,38 @@ func TestToBalanceMapsEveryFieldLiterally(t *testing.T) {
 	}
 	if len(got) != 1 || got[0] != want {
 		t.Fatalf("toBalance = %+v, want [%+v]", got, want)
+	}
+}
+
+// A live wallet holding 3.63 USDC behind a 53.78 position reported quoteBalance around -50: the
+// field is a signed quote leg, not a wallet balance. Reading it verbatim sent a negative balanceUsd
+// to the API, whose schema requires it to be non-negative, and the whole balances response failed
+// output validation as "Invalid response format" for as long as any position was open.
+func TestToBalanceIgnoresTheSignedQuoteLegOnAnOpenPosition(t *testing.T) {
+	got := toBalance(katanaWallet{
+		Wallet: "0x1", EquityUSD: "3.71000000", FreeCollateral: "1.02000000",
+		UnrealizedPnL: "0.08000000", Quantity: "-50.07000000",
+	})
+	if len(got) != 1 {
+		t.Fatalf("got %d balances, want 1", len(got))
+	}
+	if got[0].Balance != "3.63000000" {
+		t.Fatalf("balance = %s, want 3.63000000 (equity 3.71 - unrealized 0.08, not quoteBalance -50.07)", got[0].Balance)
+	}
+	if isNegativeDecimal(got[0].Balance) {
+		t.Fatalf("balance = %s, must never be negative — the API schema rejects a negative balanceUsd", got[0].Balance)
+	}
+}
+
+// A loss must not turn the collateral negative either: equity is collateral plus unrealized PnL, so
+// subtracting the loss back out returns the collateral itself.
+func TestToBalanceKeepsCollateralPositiveWhenUnrealizedPnlIsALoss(t *testing.T) {
+	got := toBalance(katanaWallet{
+		Wallet: "0x1", EquityUSD: "2.63000000", FreeCollateral: "0.00000000",
+		UnrealizedPnL: "-1.00000000", Quantity: "-50.07000000",
+	})
+	if got[0].Balance != "3.63000000" {
+		t.Fatalf("balance = %s, want 3.63000000 (equity 2.63 - unrealized -1.00)", got[0].Balance)
 	}
 }
 
