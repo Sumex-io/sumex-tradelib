@@ -73,6 +73,45 @@ func TestToBalanceMapsVbUsdcToUsdc(t *testing.T) {
 	}
 }
 
+// Uppercasing the wire type produced "TAKEPROFITMARKET", which is not a member of the shared
+// OrderType enum, so one resting TP/SL order failed output validation for the whole open-orders and
+// orders-history response ("Invalid response format"). The six cases below are the complete
+// REST-layer set per API_NOTES.md; the targets follow the Binance/BingX naming the enum uses.
+func TestNormalizeOrderTypeMapsEveryKatanaTypeOntoThePlatformEnum(t *testing.T) {
+	cases := []struct{ wire, want string }{
+		{"market", "MARKET"},
+		{"limit", "LIMIT"},
+		{"stopLossMarket", "STOP_MARKET"},
+		{"stopLossLimit", "STOP"},
+		{"takeProfitMarket", "TAKE_PROFIT_MARKET"},
+		{"takeProfitLimit", "TAKE_PROFIT"},
+		// Unknown types degrade to a valid coarse type rather than an unmappable one: losing a
+		// label costs one row, passing an invalid value costs every row in the response.
+		{"trailingStopMarket", "MARKET"},
+		{"somethingNewLimit", "LIMIT"},
+		{"", "LIMIT"},
+	}
+	for _, tc := range cases {
+		if got := normalizeOrderType(tc.wire); got != tc.want {
+			t.Fatalf("normalizeOrderType(%q) = %q, want %q", tc.wire, got, tc.want)
+		}
+	}
+}
+
+func TestToOrderReportsATriggerOrderWithAnEnumMemberType(t *testing.T) {
+	got := toOrder(katanaOrder{
+		Market: "ETH-USD", OrderId: "o-1", Type: "takeProfitMarket", Side: "sell",
+		Status: "active", OriginalQuantity: "1.00000000", ExecutedQuantity: "0.00000000",
+		TriggerPrice: "2600.00000000", ReduceOnly: true, Time: 1700000000000,
+	})
+	if got.Type != "TAKE_PROFIT_MARKET" {
+		t.Fatalf("type = %q, want TAKE_PROFIT_MARKET (an OrderType member, not TAKEPROFITMARKET)", got.Type)
+	}
+	if !got.TpOrder {
+		t.Fatalf("tpOrder = false, want true — normalizing the type must not disturb the TP/SL flags")
+	}
+}
+
 // --- Parsing and precision ---
 
 // Balance is derived as equity - unrealizedPnL, not read from the wire's quoteBalance. This
