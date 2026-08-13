@@ -138,9 +138,12 @@ type katanaCancelResult struct {
 	Status        string `json:"status"`
 }
 
-// katanaWallet is the GET /v1/wallets response object (API_NOTES.md section A). Quantity holds the
-// wire's "quoteBalance", the vbUSDC actually held; EquityUSD holds "equity", which nets in
-// unrealized PnL. The two must stay separate — the frontend renders both.
+// katanaWallet is the GET /v1/wallets response object (API_NOTES.md section A). EquityUSD holds
+// "equity", which nets in unrealized PnL.
+//
+// Quantity holds the wire's "quoteBalance", which is a signed quote leg rather than the collateral
+// held: behind a leveraged long it goes far below zero. toBalance deliberately does not report it —
+// see the note there before wiring it into anything user-facing.
 type katanaWallet struct {
 	Wallet              string           `json:"wallet"`
 	EquityUSD           string           `json:"equity"`
@@ -564,6 +567,43 @@ func deriveOrderFields(o katanaOrder) orderDerivedFields {
 	}
 }
 
+// normalizeOrderType maps Katana's order type onto the platform vocabulary the API validates
+// against. Uppercasing the wire value is not enough: "takeProfitMarket" becomes
+// "TAKEPROFITMARKET", which is not a member of the shared OrderType enum, so a single trigger
+// order made the whole open-orders (and orders-history) response fail output validation as
+// "Invalid response format" — an empty panel caused by one resting TP/SL.
+//
+// The six values below are the complete REST-layer set per API_NOTES.md ("Order Type Values").
+// The targets follow the Binance/BingX naming this enum was modelled on, where the limit variant
+// is STOP / TAKE_PROFIT and the market variant is STOP_MARKET / TAKE_PROFIT_MARKET.
+//
+// Anything unrecognised degrades to MARKET or LIMIT by suffix rather than passing an unmappable
+// value through: a coarse-but-valid type costs one row its exact label, whereas an invalid one
+// costs the caller every row in the response.
+func normalizeOrderType(wireType string) string {
+	switch strings.ToLower(strings.TrimSpace(wireType)) {
+	case "market":
+		return "MARKET"
+	case "limit":
+		return "LIMIT"
+	case "stoplossmarket":
+		return "STOP_MARKET"
+	case "stoplosslimit":
+		return "STOP"
+	case "takeprofitmarket":
+		return "TAKE_PROFIT_MARKET"
+	case "takeprofitlimit":
+		return "TAKE_PROFIT"
+	}
+
+	normalized := "LIMIT"
+	if strings.HasSuffix(strings.ToLower(strings.TrimSpace(wireType)), "market") {
+		normalized = "MARKET"
+	}
+	log.Printf("katana: unknown order type %q reported as %s", wireType, normalized)
+	return normalized
+}
+
 // toOrder maps a katanaOrder to entity.Futures_OrdersList. Katana orders carry no position context
 // (no hedge mode, one netted position per market), so PositionSize reuses the order's own quantity
 // and PositionID/Leverage stay empty, matching the hyperliquid precedent. MarginMode is the one
@@ -585,7 +625,7 @@ func toOrder(o katanaOrder) entity.Futures_OrdersList {
 		ExecutedSize:  o.ExecutedQuantity,
 		Price:         d.price,
 		Leverage:      "",
-		Type:          strings.ToUpper(strings.TrimSpace(o.Type)),
+		Type:          normalizeOrderType(o.Type),
 		Status:        strings.ToUpper(strings.TrimSpace(o.Status)),
 		CreateTime:    o.Time,
 		UpdateTime:    o.Time,
@@ -617,7 +657,7 @@ func toOrderHistory(o katanaOrder) entity.Futures_OrdersHistory {
 		Fee:            "",
 		FeeAsset:       "",
 		Leverage:       "",
-		Type:           strings.ToUpper(strings.TrimSpace(o.Type)),
+		Type:           normalizeOrderType(o.Type),
 		Status:         strings.ToUpper(strings.TrimSpace(o.Status)),
 		HedgeMode:      false,
 		MarginMode:     "CROSS",
