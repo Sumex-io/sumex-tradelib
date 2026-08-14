@@ -534,19 +534,18 @@ func (c *futures_converts) convertPositionsHistory(in []hlUserFill) (out []entit
 			continue
 		}
 
-		if utils.StringToFloat(item.ClosedPnl) == 0 && utils.StringToFloat(item.Fee) == 0 {
+		if !hlFillReducesPosition(item) {
 			continue
 		}
 
 		positionSide := "LONG"
 		dir := strings.ToLower(strings.TrimSpace(item.Dir))
-		side := strings.ToUpper(strings.TrimSpace(item.Side))
 
 		if strings.Contains(dir, "short") {
 			positionSide = "SHORT"
-		} else if strings.Contains(dir, "long") {
-			positionSide = "LONG"
-		} else if side == "A" {
+		} else if !strings.Contains(dir, "long") && utils.StringToFloat(item.StartPosition) < 0 {
+			// Deleveraging and settlement fills carry no side in `dir`, and the row
+			// now always describes the position that was open before the fill.
 			positionSide = "SHORT"
 		}
 
@@ -864,6 +863,26 @@ func hlFillPositionSide(item hlUserFill) string {
 		return "SHORT"
 	}
 	return "LONG"
+}
+
+// hlFillReducesPosition reports whether a fill traded against the position held
+// before it. Hyperliquid has no positions history endpoint, so history rows are
+// built from raw fills: the ones that only add to a position realise nothing and
+// would surface as 0 PnL rows. Closes, flips, liquidations and ADL all trade
+// against the open position, so they stay - including break-even closes, which a
+// closedPnl check would drop.
+func hlFillReducesPosition(item hlUserFill) bool {
+	startPosition := utils.StringToFloat(item.StartPosition)
+	if startPosition == 0 {
+		return false
+	}
+
+	if math.Abs(utils.StringToFloat(item.Sz)) == 0 {
+		return false
+	}
+
+	isSell := strings.EqualFold(strings.TrimSpace(item.Side), "A")
+	return isSell == (startPosition > 0)
 }
 
 func parseSpotSymbolFromFillCoin(coin string) (symbol string, ok bool) {
