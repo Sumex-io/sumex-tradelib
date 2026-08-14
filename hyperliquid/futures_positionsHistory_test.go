@@ -5,7 +5,20 @@ import (
 	"testing"
 )
 
-func positionsFromFills(t *testing.T, payload string) []entityRow {
+type positionRow struct {
+	Symbol       string
+	PositionSide string
+	PositionAmt  string
+	ClosedAmt    string
+	AvgPrice     string
+	ExitPrice    string
+	Realised     string
+	Fee          string
+	CreateTime   int64
+	UpdateTime   int64
+}
+
+func positionsFromFills(t *testing.T, payload string) []positionRow {
 	t.Helper()
 
 	var fills []hlUserFill
@@ -16,9 +29,9 @@ func positionsFromFills(t *testing.T, payload string) []entityRow {
 	c := futures_converts{}
 	converted := c.convertPositionsHistory(fills)
 
-	rows := make([]entityRow, 0, len(converted))
+	rows := make([]positionRow, 0, len(converted))
 	for _, item := range converted {
-		rows = append(rows, entityRow{
+		rows = append(rows, positionRow{
 			Symbol:       item.Symbol,
 			PositionSide: item.PositionSide,
 			PositionAmt:  item.PositionAmt,
@@ -35,19 +48,6 @@ func positionsFromFills(t *testing.T, payload string) []entityRow {
 	return rows
 }
 
-type entityRow struct {
-	Symbol       string
-	PositionSide string
-	PositionAmt  string
-	ClosedAmt    string
-	AvgPrice     string
-	ExitPrice    string
-	Realised     string
-	Fee          string
-	CreateTime   int64
-	UpdateTime   int64
-}
-
 // `/info` answers newest first, so the fills below are listed in that order: two
 // opens at 10 and 12 (average entry 11) closed by two fills at 15 and 16.
 func TestConvertPositionsHistoryAggregatesFillsIntoOnePosition(t *testing.T) {
@@ -62,7 +62,7 @@ func TestConvertPositionsHistoryAggregatesFillsIntoOnePosition(t *testing.T) {
 		t.Fatalf("expected 1 positions history row, got %d (%+v)", len(rows), rows)
 	}
 
-	expected := entityRow{
+	expected := positionRow{
 		Symbol: "SOL/USDC", PositionSide: "LONG",
 		PositionAmt: "200", ClosedAmt: "200",
 		AvgPrice: "11", ExitPrice: "15.25",
@@ -86,7 +86,7 @@ func TestConvertPositionsHistoryDerivesEntryOfPositionOpenedEarlier(t *testing.T
 		t.Fatalf("expected 1 positions history row, got %d (%+v)", len(rows), rows)
 	}
 
-	expected := entityRow{
+	expected := positionRow{
 		Symbol: "XPL/USDC", PositionSide: "SHORT",
 		PositionAmt: "1000", ClosedAmt: "1000",
 		AvgPrice: "0.7162", ExitPrice: "0.705",
@@ -109,7 +109,7 @@ func TestConvertPositionsHistoryClosesFlippedPosition(t *testing.T) {
 		t.Fatalf("expected 1 positions history row, got %d (%+v)", len(rows), rows)
 	}
 
-	expected := entityRow{
+	expected := positionRow{
 		Symbol: "ETH/USDC", PositionSide: "LONG",
 		PositionAmt: "100", ClosedAmt: "100",
 		AvgPrice: "10", ExitPrice: "12",
@@ -133,6 +133,21 @@ func TestConvertPositionsHistoryKeepsBreakEvenClose(t *testing.T) {
 	}
 	if rows[0].Realised != "0" || rows[0].AvgPrice != "0.2" || rows[0].ExitPrice != "0.2" {
 		t.Errorf("expected a break-even row at 0.2, got %+v", rows[0])
+	}
+}
+
+// An amount below the decimals a row keeps must read as zero, not "-0".
+func TestConvertPositionsHistoryFormatsSubPrecisionLossAsZero(t *testing.T) {
+	rows := positionsFromFills(t, `[
+		{"coin":"BTC","px":"100","sz":"0.001","side":"A","time":1780000002000,"startPosition":"0.001","dir":"Close Long","closedPnl":"-0.000000001","fee":"0.0","tid":2},
+		{"coin":"BTC","px":"100","sz":"0.001","side":"B","time":1780000001000,"startPosition":"0.0","dir":"Open Long","closedPnl":"0.0","fee":"0.0","tid":1}
+	]`)
+
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 positions history row, got %d (%+v)", len(rows), rows)
+	}
+	if rows[0].Realised != "0" {
+		t.Errorf("expected a zero realised profit, got %q", rows[0].Realised)
 	}
 }
 

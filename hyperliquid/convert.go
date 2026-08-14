@@ -942,9 +942,8 @@ func (p *hlPositionAccumulator) addFill(item hlUserFill, start, end *big.Rat) {
 	p.realisedProfit.Add(p.realisedProfit, hlDecimal(item.ClosedPnl))
 }
 
-// trackPeak records the largest size the position ever held, which is what the
-// history row reports as the traded amount. Sizes on the other side belong to
-// the position a flip opens, not to this one.
+// trackPeak records the largest size the position held, which the row reports as
+// the traded amount. Sizes on the other side belong to the position a flip opens.
 func (p *hlPositionAccumulator) trackPeak(size *big.Rat) {
 	if size.Sign() != 0 && (size.Sign() > 0) != p.isLong {
 		return
@@ -956,10 +955,8 @@ func (p *hlPositionAccumulator) trackPeak(size *big.Rat) {
 }
 
 func (p *hlPositionAccumulator) toEntity() entity.Futures_PositionsHistory {
-	// Fills carry no entry price, and the fills that opened the position are
-	// often older than the ones we were served, so the entry of the closed
-	// amount comes back out of the realised PnL: a long made it on top of the
-	// entry, a short made it below.
+	// Fills carry no entry price, and the opening ones are usually older than the
+	// window we were served, so the entry of the closed amount comes out of the PnL.
 	positionSide := "LONG"
 	entryNotional := new(big.Rat).Sub(p.exitNotional, p.realisedProfit)
 	if !p.isLong {
