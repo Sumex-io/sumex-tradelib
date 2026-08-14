@@ -5,73 +5,148 @@ import (
 	"testing"
 )
 
-// Fills as `/info` returns them: an opening fill carries closedPnl "0.0" and a
-// non-zero fee, so only the fills trading against the open position may become
-// positions history rows.
-func TestConvertPositionsHistorySkipsOpeningFills(t *testing.T) {
-	payload := []byte(`[
-		{"coin":"XPL","px":"0.7031","sz":"1500.0","side":"A","time":1780944613087,"startPosition":"-262.46","dir":"Open Short","closedPnl":"0.0","fee":"0.004194","tid":724473335954239},
-		{"coin":"XPL","px":"0.6934","sz":"1500.0","side":"B","time":1780944713087,"startPosition":"-1762.46","dir":"Close Short","closedPnl":"-14.55","fee":"0.004161","tid":724473335954240},
-		{"coin":"TON","px":"1.3622","sz":"2000.0","side":"A","time":1770112166927,"startPosition":"2000.0","dir":"Close Long","closedPnl":"-10432.56","fee":"0.858185","tid":681866443270310}
-	]`)
+func positionsFromFills(t *testing.T, payload string) []entityRow {
+	t.Helper()
 
 	var fills []hlUserFill
-	if err := json.Unmarshal(payload, &fills); err != nil {
+	if err := json.Unmarshal([]byte(payload), &fills); err != nil {
 		t.Fatalf("unmarshal fills: %v", err)
 	}
 
 	c := futures_converts{}
-	res := c.convertPositionsHistory(fills)
-	if len(res) != 2 {
-		t.Fatalf("expected 2 positions history rows, got %d", len(res))
+	converted := c.convertPositionsHistory(fills)
+
+	rows := make([]entityRow, 0, len(converted))
+	for _, item := range converted {
+		rows = append(rows, entityRow{
+			Symbol:       item.Symbol,
+			PositionSide: item.PositionSide,
+			PositionAmt:  item.PositionAmt,
+			ClosedAmt:    item.ExecutedPositionAmt,
+			AvgPrice:     item.AvgPrice,
+			ExitPrice:    item.ExecutedAvgPrice,
+			Realised:     item.RealisedProfit,
+			Fee:          item.Fee,
+			CreateTime:   item.CreateTime,
+			UpdateTime:   item.UpdateTime,
+		})
 	}
-	if res[0].RealisedProfit != "-14.55" || res[0].PositionSide != "SHORT" {
-		t.Errorf("expected the short close row, got %+v", res[0])
+
+	return rows
+}
+
+type entityRow struct {
+	Symbol       string
+	PositionSide string
+	PositionAmt  string
+	ClosedAmt    string
+	AvgPrice     string
+	ExitPrice    string
+	Realised     string
+	Fee          string
+	CreateTime   int64
+	UpdateTime   int64
+}
+
+// `/info` answers newest first, so the fills below are listed in that order: two
+// opens at 10 and 12 (average entry 11) closed by two fills at 15 and 16.
+func TestConvertPositionsHistoryAggregatesFillsIntoOnePosition(t *testing.T) {
+	rows := positionsFromFills(t, `[
+		{"coin":"SOL","px":"16","sz":"50.0","side":"A","time":1780000004000,"startPosition":"50.0","dir":"Close Long","closedPnl":"250.0","fee":"0.4","tid":4},
+		{"coin":"SOL","px":"15","sz":"150.0","side":"A","time":1780000003000,"startPosition":"200.0","dir":"Close Long","closedPnl":"600.0","fee":"0.3","tid":3},
+		{"coin":"SOL","px":"12","sz":"100.0","side":"B","time":1780000002000,"startPosition":"100.0","dir":"Open Long","closedPnl":"0.0","fee":"0.2","tid":2},
+		{"coin":"SOL","px":"10","sz":"100.0","side":"B","time":1780000001000,"startPosition":"0.0","dir":"Open Long","closedPnl":"0.0","fee":"0.1","tid":1}
+	]`)
+
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 positions history row, got %d (%+v)", len(rows), rows)
 	}
-	if res[1].RealisedProfit != "-10432.56" || res[1].PositionSide != "LONG" {
-		t.Errorf("expected the long close row, got %+v", res[1])
+
+	expected := entityRow{
+		Symbol: "SOL/USDC", PositionSide: "LONG",
+		PositionAmt: "200", ClosedAmt: "200",
+		AvgPrice: "11", ExitPrice: "15.25",
+		Realised: "850", Fee: "1",
+		CreateTime: 1780000001000, UpdateTime: 1780000004000,
+	}
+	if rows[0] != expected {
+		t.Errorf("expected %+v, got %+v", expected, rows[0])
 	}
 }
 
-// The first fill of a position reports startPosition "0.0" - nothing to realise.
-func TestConvertPositionsHistorySkipsFirstFillOfPosition(t *testing.T) {
-	payload := []byte(`[
-		{"coin":"POPCAT","px":"0.2","sz":"100.0","side":"B","time":1780944610650,"startPosition":"0.0","dir":"Open Long","closedPnl":"0.0","fee":"0.0044","tid":335975793901354}
+// A position opened before the served fills has no open time and no entry fills,
+// so the entry price has to come back out of the realised PnL.
+func TestConvertPositionsHistoryDerivesEntryOfPositionOpenedEarlier(t *testing.T) {
+	rows := positionsFromFills(t, `[
+		{"coin":"XPL","px":"0.71","sz":"500.0","side":"B","time":1780000002000,"startPosition":"-500.0","dir":"Auto-Deleveraging","closedPnl":"3.2","fee":"0.0","tid":2},
+		{"coin":"XPL","px":"0.70","sz":"500.0","side":"B","time":1780000001000,"startPosition":"-1000.0","dir":"Close Short","closedPnl":"8.0","fee":"0.1","tid":1}
 	]`)
 
-	var fills []hlUserFill
-	if err := json.Unmarshal(payload, &fills); err != nil {
-		t.Fatalf("unmarshal fills: %v", err)
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 positions history row, got %d (%+v)", len(rows), rows)
 	}
 
-	c := futures_converts{}
-	if res := c.convertPositionsHistory(fills); len(res) != 0 {
-		t.Fatalf("expected no positions history rows, got %d", len(res))
+	expected := entityRow{
+		Symbol: "XPL/USDC", PositionSide: "SHORT",
+		PositionAmt: "1000", ClosedAmt: "1000",
+		AvgPrice: "0.7162", ExitPrice: "0.705",
+		Realised: "11.2", Fee: "0.1",
+		CreateTime: 0, UpdateTime: 1780000002000,
+	}
+	if rows[0] != expected {
+		t.Errorf("expected %+v, got %+v", expected, rows[0])
 	}
 }
 
-// Break-even closes and fee-free exits (ADL, settlement) still realise the
-// position, so they must survive the filter.
-func TestConvertPositionsHistoryKeepsBreakEvenAndFeeFreeCloses(t *testing.T) {
-	payload := []byte(`[
-		{"coin":"POPCAT","px":"0.2","sz":"100.0","side":"A","time":1780944710650,"startPosition":"100.0","dir":"Close Long","closedPnl":"0.0","fee":"0.0044","tid":335975793901355},
-		{"coin":"XPL","px":"0.71","sz":"500.0","side":"B","time":1780944810650,"startPosition":"-500.0","dir":"Auto-Deleveraging","closedPnl":"3.2","fee":"0.0","tid":335975793901356}
+// A flip realises the position it turns out of; the remainder stays open.
+func TestConvertPositionsHistoryClosesFlippedPosition(t *testing.T) {
+	rows := positionsFromFills(t, `[
+		{"coin":"ETH","px":"12","sz":"150.0","side":"A","time":1780000002000,"startPosition":"100.0","dir":"Long > Short","closedPnl":"200.0","fee":"0.2","tid":2},
+		{"coin":"ETH","px":"10","sz":"100.0","side":"B","time":1780000001000,"startPosition":"0.0","dir":"Open Long","closedPnl":"0.0","fee":"0.1","tid":1}
 	]`)
 
-	var fills []hlUserFill
-	if err := json.Unmarshal(payload, &fills); err != nil {
-		t.Fatalf("unmarshal fills: %v", err)
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 positions history row, got %d (%+v)", len(rows), rows)
 	}
 
-	c := futures_converts{}
-	res := c.convertPositionsHistory(fills)
-	if len(res) != 2 {
-		t.Fatalf("expected 2 positions history rows, got %d", len(res))
+	expected := entityRow{
+		Symbol: "ETH/USDC", PositionSide: "LONG",
+		PositionAmt: "100", ClosedAmt: "100",
+		AvgPrice: "10", ExitPrice: "12",
+		Realised: "200", Fee: "0.3",
+		CreateTime: 1780000001000, UpdateTime: 1780000002000,
 	}
-	if res[0].RealisedProfit != "0.0" {
-		t.Errorf("expected the break-even close to be kept, got %+v", res[0])
+	if rows[0] != expected {
+		t.Errorf("expected %+v, got %+v", expected, rows[0])
 	}
-	if res[1].RealisedProfit != "3.2" || res[1].PositionSide != "SHORT" {
-		t.Errorf("expected the fee-free ADL close, got %+v", res[1])
+}
+
+// Break-even closes realise nothing but still ended a position, so they stay.
+func TestConvertPositionsHistoryKeepsBreakEvenClose(t *testing.T) {
+	rows := positionsFromFills(t, `[
+		{"coin":"POPCAT","px":"0.2","sz":"100.0","side":"A","time":1780000002000,"startPosition":"100.0","dir":"Close Long","closedPnl":"0.0","fee":"0.0044","tid":2},
+		{"coin":"POPCAT","px":"0.2","sz":"100.0","side":"B","time":1780000001000,"startPosition":"0.0","dir":"Open Long","closedPnl":"0.0","fee":"0.0044","tid":1}
+	]`)
+
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 positions history row, got %d (%+v)", len(rows), rows)
+	}
+	if rows[0].Realised != "0" || rows[0].AvgPrice != "0.2" || rows[0].ExitPrice != "0.2" {
+		t.Errorf("expected a break-even row at 0.2, got %+v", rows[0])
+	}
+}
+
+// Positions that are still open belong to the positions endpoint, and spot fills
+// are not positions at all.
+func TestConvertPositionsHistorySkipsOpenPositionsAndSpotFills(t *testing.T) {
+	rows := positionsFromFills(t, `[
+		{"coin":"BTC","px":"11","sz":"40.0","side":"A","time":1780000003000,"startPosition":"100.0","dir":"Close Long","closedPnl":"40.0","fee":"0.2","tid":3},
+		{"coin":"BTC","px":"10","sz":"100.0","side":"B","time":1780000002000,"startPosition":"0.0","dir":"Open Long","closedPnl":"0.0","fee":"0.1","tid":2},
+		{"coin":"PURR/USDC","px":"0.3","sz":"1000.0","side":"A","time":1780000001500,"startPosition":"1000.0","dir":"Sell","closedPnl":"12.0","fee":"0.1","tid":15},
+		{"coin":"@107","px":"58.9","sz":"0.2","side":"B","time":1780000001000,"startPosition":"0.0","dir":"Buy","closedPnl":"0.0","fee":"0.00014","tid":1}
+	]`)
+
+	if len(rows) != 0 {
+		t.Fatalf("expected no positions history rows, got %d (%+v)", len(rows), rows)
 	}
 }
