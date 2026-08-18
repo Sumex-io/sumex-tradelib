@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -521,49 +522,54 @@ func (c *futures_converts) convertFuturesOrdersHistory(in []hlHistoricalOrder) (
 	return out
 }
 
+// Hyperliquid serves no positions history endpoint, so a position is replayed
+// from the fills that built it: every fill carries the position size that
+// preceded it, and a position ends the moment that size plus the fill reaches
+// zero. Positions that are still open produce no row - they belong to the
+// positions endpoint.
 func (c *futures_converts) convertPositionsHistory(in []hlUserFill) (out []entity.Futures_PositionsHistory) {
 	if len(in) == 0 {
 		return out
 	}
 
 	out = make([]entity.Futures_PositionsHistory, 0, len(in))
+	openPositions := make(map[string]*hlPositionAccumulator, len(in))
 
-	for _, item := range in {
+	for _, item := range hlFillsOldestFirst(in) {
 		coin := strings.TrimSpace(item.Coin)
-		if coin == "" || strings.HasPrefix(coin, "@") {
+		if coin == "" || strings.HasPrefix(coin, "@") || strings.Contains(coin, "/") {
 			continue
 		}
 
-		if utils.StringToFloat(item.ClosedPnl) == 0 && utils.StringToFloat(item.Fee) == 0 {
+		start := hlDecimal(item.StartPosition)
+		size := hlDecimal(absDecimalString(item.Sz))
+		if size.Sign() == 0 {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(item.Side), "A") {
+			size.Neg(size)
+		}
+		end := new(big.Rat).Add(start, size)
+
+		position, ok := openPositions[coin]
+		if !ok {
+			position = newHLPositionAccumulator(coin, item, start, end)
+			openPositions[coin] = position
+		}
+		position.addFill(item, start, end)
+
+		if end.Sign() == 0 {
+			out = appendHLPosition(out, position)
+			delete(openPositions, coin)
 			continue
 		}
 
-		positionSide := "LONG"
-		dir := strings.ToLower(strings.TrimSpace(item.Dir))
-		side := strings.ToUpper(strings.TrimSpace(item.Side))
-
-		if strings.Contains(dir, "short") {
-			positionSide = "SHORT"
-		} else if strings.Contains(dir, "long") {
-			positionSide = "LONG"
-		} else if side == "A" {
-			positionSide = "SHORT"
+		// A flip ("Long > Short") closes the position and reopens the remainder
+		// on the other side at the same price.
+		if start.Sign() != 0 && end.Sign() != start.Sign() {
+			out = appendHLPosition(out, position)
+			openPositions[coin] = newHLPositionAccumulator(coin, item, new(big.Rat), end)
 		}
-
-		out = append(out, entity.Futures_PositionsHistory{
-			Symbol: coin + "/USDC",
-			// OrderID:             stringifyHLID(item.Oid),
-			PositionID:          stringifyHLID(item.Tid),
-			PositionSide:        positionSide,
-			PositionAmt:         strings.TrimSpace(item.Sz),
-			ExecutedPositionAmt: strings.TrimSpace(item.Sz),
-			AvgPrice:            strings.TrimSpace(item.Px),
-			ExecutedAvgPrice:    strings.TrimSpace(item.Px),
-			RealisedProfit:      strings.TrimSpace(item.ClosedPnl),
-			Fee:                 strings.TrimSpace(item.Fee),
-			// FeeAsset:            strings.TrimSpace(item.FeeToken),
-			UpdateTime: item.Time,
-		})
 	}
 
 	return out
@@ -864,6 +870,162 @@ func hlFillPositionSide(item hlUserFill) string {
 		return "SHORT"
 	}
 	return "LONG"
+}
+
+const (
+	hlHistoryPriceDecimals  = 6
+	hlHistorySizeDecimals   = 8
+	hlHistoryAmountDecimals = 8
+)
+
+// hlPositionAccumulator collects the fills of one position until it closes.
+type hlPositionAccumulator struct {
+	coin           string
+	positionID     string
+	isLong         bool
+	peakSize       *big.Rat
+	closedSize     *big.Rat
+	exitNotional   *big.Rat
+	realisedProfit *big.Rat
+	fee            *big.Rat
+	openTime       int64
+	closeTime      int64
+}
+
+// newHLPositionAccumulator starts a position at the given fill. A non-zero
+// startPosition means the position was opened before the fills we were served,
+// so its open time stays unknown and its entry has to be derived at close.
+func newHLPositionAccumulator(coin string, item hlUserFill, start, end *big.Rat) *hlPositionAccumulator {
+	position := &hlPositionAccumulator{
+		coin:           coin,
+		isLong:         start.Sign() > 0 || (start.Sign() == 0 && end.Sign() > 0),
+		peakSize:       new(big.Rat).Abs(start),
+		closedSize:     new(big.Rat),
+		exitNotional:   new(big.Rat),
+		realisedProfit: new(big.Rat),
+		fee:            new(big.Rat),
+		closeTime:      item.Time,
+	}
+
+	if start.Sign() == 0 {
+		position.openTime = item.Time
+	}
+
+	return position
+}
+
+func (p *hlPositionAccumulator) addFill(item hlUserFill, start, end *big.Rat) {
+	p.positionID = stringifyHLID(item.Tid)
+	p.closeTime = item.Time
+	p.fee.Add(p.fee, hlDecimal(item.Fee))
+	p.trackPeak(start)
+	p.trackPeak(end)
+
+	if start.Sign() == 0 {
+		return
+	}
+
+	filled := new(big.Rat).Sub(end, start)
+	if filled.Sign() == start.Sign() {
+		return
+	}
+
+	// The fill trades against the position, so it realises the smaller of the two:
+	// anything beyond the open size belongs to the position a flip opens.
+	closed := new(big.Rat).Abs(start)
+	if size := new(big.Rat).Abs(filled); size.Cmp(closed) < 0 {
+		closed = size
+	}
+
+	p.closedSize.Add(p.closedSize, closed)
+	p.exitNotional.Add(p.exitNotional, new(big.Rat).Mul(closed, hlDecimal(item.Px)))
+	p.realisedProfit.Add(p.realisedProfit, hlDecimal(item.ClosedPnl))
+}
+
+// trackPeak records the largest size the position held, which the row reports as
+// the traded amount. Sizes on the other side belong to the position a flip opens.
+func (p *hlPositionAccumulator) trackPeak(size *big.Rat) {
+	if size.Sign() != 0 && (size.Sign() > 0) != p.isLong {
+		return
+	}
+
+	if abs := new(big.Rat).Abs(size); abs.Cmp(p.peakSize) > 0 {
+		p.peakSize = abs
+	}
+}
+
+func (p *hlPositionAccumulator) toEntity() entity.Futures_PositionsHistory {
+	// Fills carry no entry price, and the opening ones are usually older than the
+	// window we were served, so the entry of the closed amount comes out of the PnL.
+	positionSide := "LONG"
+	entryNotional := new(big.Rat).Sub(p.exitNotional, p.realisedProfit)
+	if !p.isLong {
+		positionSide = "SHORT"
+		entryNotional = new(big.Rat).Add(p.exitNotional, p.realisedProfit)
+	}
+
+	return entity.Futures_PositionsHistory{
+		Symbol:              p.coin + "/USDC",
+		PositionID:          p.positionID,
+		PositionSide:        positionSide,
+		PositionAmt:         hlDecimalString(p.peakSize, hlHistorySizeDecimals),
+		ExecutedPositionAmt: hlDecimalString(p.closedSize, hlHistorySizeDecimals),
+		AvgPrice:            hlDecimalString(new(big.Rat).Quo(entryNotional, p.closedSize), hlHistoryPriceDecimals),
+		ExecutedAvgPrice:    hlDecimalString(new(big.Rat).Quo(p.exitNotional, p.closedSize), hlHistoryPriceDecimals),
+		RealisedProfit:      hlDecimalString(p.realisedProfit, hlHistoryAmountDecimals),
+		Fee:                 hlDecimalString(p.fee, hlHistoryAmountDecimals),
+		CreateTime:          p.openTime,
+		UpdateTime:          p.closeTime,
+	}
+}
+
+// appendHLPosition drops positions that closed without realising anything,
+// which is what a zero-size fill on a flat position would produce.
+func appendHLPosition(out []entity.Futures_PositionsHistory, position *hlPositionAccumulator) []entity.Futures_PositionsHistory {
+	if position == nil || position.closedSize.Sign() == 0 {
+		return out
+	}
+
+	return append(out, position.toEntity())
+}
+
+// hlFillsOldestFirst replays fills in the order the position was built. `/info`
+// answers newest first, so reversing keeps fills that share a millisecond in
+// their original sequence, which the stable sort then preserves.
+func hlFillsOldestFirst(in []hlUserFill) []hlUserFill {
+	out := make([]hlUserFill, len(in))
+	copy(out, in)
+
+	if len(out) > 1 && out[0].Time > out[len(out)-1].Time {
+		for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+			out[i], out[j] = out[j], out[i]
+		}
+	}
+
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Time < out[j].Time })
+
+	return out
+}
+
+func hlDecimal(value string) *big.Rat {
+	parsed := new(big.Rat)
+	if _, ok := parsed.SetString(strings.TrimSpace(value)); !ok {
+		return new(big.Rat)
+	}
+
+	return parsed
+}
+
+func hlDecimalString(value *big.Rat, decimals int) string {
+	s := value.FloatString(decimals)
+	s = strings.TrimRight(s, "0")
+	s = strings.TrimRight(s, ".")
+	// An amount below the last kept decimal must not come out as "-0".
+	if s == "" || s == "-" || s == "-0" {
+		return "0"
+	}
+
+	return s
 }
 
 func parseSpotSymbolFromFillCoin(coin string) (symbol string, ok bool) {
