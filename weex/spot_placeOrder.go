@@ -107,8 +107,13 @@ func (s *spot_placeOrder) Do(ctx context.Context, opts ...utils.RequestOption) (
 		m["price"] = *s.price
 	}
 
+	base := ""
 	if s.clientOrderID != nil {
-		m["newClientOrderId"] = *s.clientOrderID
+		base = *s.clientOrderID
+	}
+
+	if clientOrderID := resolveClientOrderID(s.brokerID, base); clientOrderID != "" {
+		m["newClientOrderId"] = clientOrderID
 	}
 
 	if s.orderType != nil && strings.ToUpper(string(*s.orderType)) == "LIMIT" {
