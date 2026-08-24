@@ -131,8 +131,13 @@ func (s *futures_placeOrder) doNormalOrder(ctx context.Context, opts ...utils.Re
 		m["price"] = *s.price
 	}
 
+	base := ""
 	if s.clientOrderID != nil {
-		m["newClientOrderId"] = *s.clientOrderID
+		base = *s.clientOrderID
+	}
+
+	if clientOrderID := resolveClientOrderID(s.brokerID, base); clientOrderID != "" {
+		m["newClientOrderId"] = clientOrderID
 	}
 
 	if s.reduce != nil && *s.reduce {
