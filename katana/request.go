@@ -114,6 +114,19 @@ func (c *FuturesClient) callAPI(ctx context.Context, r *utils.Request, opts ...u
 	r.TmpApi = c.apiKey
 	r.TmpSig = c.secretKey
 
+	// A public read carries no signature, so createHeaders leaves it bare. The key is still
+	// worth sending: unkeyed reads share one bucket per caller IP, a keyed one gets the API
+	// account its own. Katana validates the key even here -- a wrong one answers 401
+	// INVALID_API_KEY -- so only a caller that knows the key belongs to this host sets it.
+	if r.SecType == utils.SecTypeNone && c.PublicAPIKey != "" {
+		header := http.Header{}
+		if r.Header != nil {
+			header = r.Header.Clone()
+		}
+		header.Set("KP-API-KEY", c.PublicAPIKey)
+		r.Header = header
+	}
+
 	opts = append(opts, createFullURL, createBody, createSign, createHeaders)
 	if err := r.ParseRequest(opts...); err != nil {
 		return []byte{}, &http.Header{}, err
