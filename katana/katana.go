@@ -38,6 +38,22 @@ func baseURLFor(demo bool) string {
 // cacheTTL bounds how long a client reuses a resolved wallet address or market catalog.
 const cacheTTL = 5 * time.Minute
 
+// marketsCaches holds the catalog per host rather than per client. The catalog is public and
+// identical for everyone on a host, while callers build a client per request -- sumex-trading-api
+// constructs one inside every action -- which left the old per-client cache never hitting and put
+// a GET /v1/markets in front of six actions. Keyed by BaseURL so production and sandbox, which
+// list different markets, can never answer for each other. The stored map is read-only: every
+// consumer looks symbols up in it, none writes.
+var (
+	marketsCacheMu sync.Mutex
+	marketsCaches  = map[string]marketsCacheEntry{}
+)
+
+type marketsCacheEntry struct {
+	markets  map[string]Market
+	cachedAt time.Time
+}
+
 // ===============SPOT=================
 
 // SpotClient exists only to serve the two account-level actions every exchange in this library is
@@ -136,9 +152,10 @@ type FuturesClient struct {
 	logger     *log.Logger
 	TimeOffset int64
 
-	marketsMu       sync.Mutex
-	marketsCache    map[string]Market
-	marketsCachedAt time.Time
+	// PublicAPIKey is the platform key sent on unsigned public reads. It is not the caller's
+	// credential: it only moves those reads off the shared per-IP bucket onto an API account's
+	// own one. Leave it empty for a host the key is not registered for -- see callAPI.
+	PublicAPIKey string
 
 	walletMu       sync.Mutex
 	walletCache    string
@@ -300,8 +317,9 @@ func (c *FuturesClient) NewSetLeverage() *futures_setLeverage {
 // ===============RESOLVERS=================
 //
 // markets and resolveWallet are the two values almost every Katana action needs before it can
-// build a request, and both cost a round trip. They live on the client because the cache does,
-// and reach the action builders the way hyperliquid passes `user`: injected by the factory.
+// build a request, and both cost a round trip. They reach the action builders the way hyperliquid
+// passes `user`: injected by the factory. The wallet cache stays on the client because a wallet is
+// per credential; the market catalog does not, see marketsCaches.
 
 // markets fetches the tradable perpetual catalog (GET /v1/markets) and indexes it by symbol. Both
 // filters are load-bearing: non-perpetual markets (equities, metals) are out of scope, and a
@@ -310,13 +328,12 @@ func (c *FuturesClient) NewSetLeverage() *futures_setLeverage {
 // since gone non-active takes effectiveMarket's unknown path — the row is still returned, just
 // with an empty leverage.
 func (c *FuturesClient) markets(ctx context.Context, opts ...utils.RequestOption) (map[string]Market, error) {
-	c.marketsMu.Lock()
-	if c.marketsCache != nil && time.Since(c.marketsCachedAt) < cacheTTL {
-		cached := c.marketsCache
-		c.marketsMu.Unlock()
-		return cached, nil
+	marketsCacheMu.Lock()
+	cached, ok := marketsCaches[c.BaseURL]
+	marketsCacheMu.Unlock()
+	if ok && time.Since(cached.cachedAt) < cacheTTL {
+		return cached.markets, nil
 	}
-	c.marketsMu.Unlock()
 
 	data, _, err := c.callAPI(ctx, marketsRequest(), opts...)
 	if err != nil {
@@ -330,10 +347,9 @@ func (c *FuturesClient) markets(ctx context.Context, opts ...utils.RequestOption
 
 	out := filterTradableMarkets(raw)
 
-	c.marketsMu.Lock()
-	c.marketsCache = out
-	c.marketsCachedAt = time.Now()
-	c.marketsMu.Unlock()
+	marketsCacheMu.Lock()
+	marketsCaches[c.BaseURL] = marketsCacheEntry{markets: out, cachedAt: time.Now()}
+	marketsCacheMu.Unlock()
 
 	return out, nil
 }

@@ -97,9 +97,11 @@ func TestMarketsFiltersToPerpetualAndCaches(t *testing.T) {
 	}
 
 	// Backdate the cache past its TTL and confirm a refetch happens.
-	c.marketsMu.Lock()
-	c.marketsCachedAt = time.Now().Add(-(cacheTTL + time.Minute))
-	c.marketsMu.Unlock()
+	marketsCacheMu.Lock()
+	entry := marketsCaches[c.BaseURL]
+	entry.cachedAt = time.Now().Add(-(cacheTTL + time.Minute))
+	marketsCaches[c.BaseURL] = entry
+	marketsCacheMu.Unlock()
 
 	if _, err := c.markets(context.Background()); err != nil {
 		t.Fatal(err)
