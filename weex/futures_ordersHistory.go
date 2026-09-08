@@ -11,6 +11,13 @@ import (
 	"github.com/Sumex-io/sumex-tradelib/utils"
 )
 
+// WeEx documents `limit` on GET /capi/v3/order/history as 1..1000 and applies a 500-record default
+// when it is omitted; from 2026-09-14 the request weight scales with the page size.
+const (
+	futuresOrdersHistoryDefaultLimit int64 = 100
+	futuresOrdersHistoryMaxLimit     int64 = 1000
+)
+
 type futures_ordersHistory struct {
 	callAPI func(ctx context.Context, r *utils.Request, opts ...utils.RequestOption) (data []byte, header *http.Header, err error)
 	convert futures_converts
@@ -54,6 +61,18 @@ func (s *futures_ordersHistory) OrderID(orderID string) *futures_ordersHistory {
 	return s
 }
 
+// pageLimit keeps the caller's Limit inside WeEx's documented range and never returns 0, so the
+// request always carries an explicit page size instead of billing weight for their 500-row default.
+func (s *futures_ordersHistory) pageLimit() int64 {
+	if s.limit == nil || *s.limit <= 0 {
+		return futuresOrdersHistoryDefaultLimit
+	}
+	if *s.limit > futuresOrdersHistoryMaxLimit {
+		return futuresOrdersHistoryMaxLimit
+	}
+	return *s.limit
+}
+
 func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOption) (res []entity.Futures_OrdersHistory, err error) {
 	{
 		r := &utils.Request{
@@ -67,9 +86,7 @@ func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOpt
 		if s.symbol != nil && *s.symbol != "" {
 			m["symbol"] = *s.symbol
 		}
-		if s.limit != nil && *s.limit > 0 {
-			m["limit"] = *s.limit
-		}
+		m["limit"] = s.pageLimit()
 		if s.page != nil && *s.page >= 0 {
 			m["page"] = *s.page
 		}
