@@ -224,7 +224,8 @@ func (s *futures_placeOrder) Do(ctx context.Context, opts ...utils.RequestOption
 		m["type"] = strings.ToLower(string(*s.orderType))
 	}
 
-	if s.price != nil {
+	// KuCoin validates price against the tick even on market orders, where it has no use.
+	if s.price != nil && (s.orderType == nil || *s.orderType != entity.OrderTypeMarket) {
 		m["price"] = *s.price
 	}
 

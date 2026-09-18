@@ -28,6 +28,9 @@ type futures_placeOrder struct {
 	reduce  *bool
 	tpOrder *bool
 	slOrder *bool
+
+	tpPrice *string
+	slPrice *string
 }
 
 func (s *futures_placeOrder) Reduce(reduce bool) *futures_placeOrder {
@@ -42,6 +45,18 @@ func (s *futures_placeOrder) TpOrder(v bool) *futures_placeOrder {
 
 func (s *futures_placeOrder) SlOrder(v bool) *futures_placeOrder {
 	s.slOrder = &v
+	return s
+}
+
+// TpPrice attaches a take-profit to the order itself, armed on fill (unlike TpOrder, which needs an open position).
+func (s *futures_placeOrder) TpPrice(tpPrice string) *futures_placeOrder {
+	s.tpPrice = &tpPrice
+	return s
+}
+
+// SlPrice attaches a stop-loss to the order itself, armed on fill.
+func (s *futures_placeOrder) SlPrice(slPrice string) *futures_placeOrder {
+	s.slPrice = &slPrice
 	return s
 }
 
@@ -235,6 +250,17 @@ func (s *futures_placeOrder) Do(ctx context.Context, opts ...utils.RequestOption
 
 	if s.reduce != nil && *s.reduce == true {
 		m["reduceOnly"] = true
+	}
+
+	// Partial: the TP/SL cover the quantity this order actually fills, not the whole position.
+	if s.tpPrice != nil || s.slPrice != nil {
+		m["tpslMode"] = "Partial"
+		if s.tpPrice != nil {
+			m["takeProfit"] = *s.tpPrice
+		}
+		if s.slPrice != nil {
+			m["stopLoss"] = *s.slPrice
+		}
 	}
 
 	r.SetFormParams(m)

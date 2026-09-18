@@ -189,7 +189,7 @@ func (c *futures_converts) convertInstrumentsInfo(in []futures_instrumentsInfo) 
 			Base:           item.BaseCurrency,
 			Quote:          item.QuoteCurrency,
 			MinQty:         utils.FloatToStringAll(item.LotSize),
-			PricePrecision: utils.GetPrecisionFromStr(utils.FloatToStringAll(item.IndexPriceTickSize)),
+			PricePrecision: utils.GetPrecisionFromStr(utils.FloatToStringAll(item.TickSize)),
 			SizePrecision:  utils.GetPrecisionFromStr(utils.FloatToStringAll(item.LotSize)),
 			MaxLeverage:    utils.Int64ToString(item.MaxLeverage),
 			State:          state,
