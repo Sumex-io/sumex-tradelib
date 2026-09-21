@@ -1,6 +1,8 @@
 package weex
 
 import (
+	"math/big"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -482,4 +484,160 @@ func (c *futures_converts) convertLeverage(in []futures_leverage) (out entity.Fu
 	}
 
 	return out
+}
+
+const weexHistoryDecimals = 8
+
+type weexPositionAccumulator struct {
+	symbol         string
+	positionSide   string
+	positionID     string
+	held           *big.Rat
+	peakSize       *big.Rat
+	closedSize     *big.Rat
+	exitNotional   *big.Rat
+	realisedProfit *big.Rat
+	fee            *big.Rat
+	openTime       int64
+	closeTime      int64
+}
+
+// Fills carry no prior size: a position ends at zero size, or at its next opening fill if opened before the window.
+func (c *futures_converts) convertPositionsHistory(in []entity.Futures_UserTrades) (out []entity.Futures_PositionsHistory) {
+	if len(in) == 0 {
+		return out
+	}
+
+	fills := make([]entity.Futures_UserTrades, len(in))
+	copy(fills, in)
+	sort.SliceStable(fills, func(i, j int) bool { return fills[i].Time < fills[j].Time })
+
+	open := make(map[string]*weexPositionAccumulator)
+
+	for _, item := range fills {
+		side := strings.ToUpper(strings.TrimSpace(item.PositionSide))
+		if side != "LONG" && side != "SHORT" {
+			continue
+		}
+
+		qty := weexDecimal(item.Qty)
+		qty.Abs(qty)
+		if qty.Sign() == 0 {
+			continue
+		}
+
+		key := item.Symbol + "|" + side
+		position := open[key]
+
+		if strings.EqualFold(strings.TrimSpace(item.Side), "BUY") == (side == "LONG") {
+			if position != nil && position.closedSize.Sign() > 0 && position.held.Sign() <= 0 {
+				out = append(out, position.toEntity())
+				position = nil
+			}
+			if position == nil {
+				position = newWeexPositionAccumulator(item.Symbol, side, item.Time)
+				open[key] = position
+			}
+			position.addOpen(item, qty)
+			continue
+		}
+
+		if position == nil {
+			position = newWeexPositionAccumulator(item.Symbol, side, 0)
+			open[key] = position
+		}
+		position.addClose(item, qty)
+
+		if position.openTime != 0 && position.held.Sign() == 0 {
+			out = append(out, position.toEntity())
+			delete(open, key)
+		}
+	}
+
+	for _, position := range open {
+		if position.closedSize.Sign() == 0 || (position.openTime != 0 && position.held.Sign() > 0) {
+			continue
+		}
+		out = append(out, position.toEntity())
+	}
+
+	return out
+}
+
+func newWeexPositionAccumulator(symbol, positionSide string, openTime int64) *weexPositionAccumulator {
+	return &weexPositionAccumulator{
+		symbol:         symbol,
+		positionSide:   positionSide,
+		held:           new(big.Rat),
+		peakSize:       new(big.Rat),
+		closedSize:     new(big.Rat),
+		exitNotional:   new(big.Rat),
+		realisedProfit: new(big.Rat),
+		fee:            new(big.Rat),
+		openTime:       openTime,
+	}
+}
+
+func (p *weexPositionAccumulator) addOpen(item entity.Futures_UserTrades, qty *big.Rat) {
+	p.held.Add(p.held, qty)
+	if p.held.Cmp(p.peakSize) > 0 {
+		p.peakSize.Set(p.held)
+	}
+	p.fee.Add(p.fee, weexDecimal(item.Commission))
+}
+
+func (p *weexPositionAccumulator) addClose(item entity.Futures_UserTrades, qty *big.Rat) {
+	p.held.Sub(p.held, qty)
+	p.closedSize.Add(p.closedSize, qty)
+	p.exitNotional.Add(p.exitNotional, new(big.Rat).Mul(qty, weexDecimal(item.Price)))
+	p.realisedProfit.Add(p.realisedProfit, weexDecimal(item.RealisedProfit))
+	p.fee.Add(p.fee, weexDecimal(item.Commission))
+	p.positionID = item.TradeID
+	p.closeTime = item.Time
+}
+
+func (p *weexPositionAccumulator) toEntity() entity.Futures_PositionsHistory {
+	// The opening fills are usually older than the window, so the entry comes out of the PnL.
+	entryNotional := new(big.Rat).Sub(p.exitNotional, p.realisedProfit)
+	if p.positionSide == "SHORT" {
+		entryNotional = new(big.Rat).Add(p.exitNotional, p.realisedProfit)
+	}
+
+	peakSize := p.peakSize
+	if p.closedSize.Cmp(peakSize) > 0 {
+		peakSize = p.closedSize
+	}
+
+	return entity.Futures_PositionsHistory{
+		Symbol:              p.symbol,
+		PositionID:          p.positionID,
+		PositionSide:        p.positionSide,
+		PositionAmt:         weexDecimalString(peakSize),
+		ExecutedPositionAmt: weexDecimalString(p.closedSize),
+		AvgPrice:            weexDecimalString(new(big.Rat).Quo(entryNotional, p.closedSize)),
+		ExecutedAvgPrice:    weexDecimalString(new(big.Rat).Quo(p.exitNotional, p.closedSize)),
+		RealisedProfit:      weexDecimalString(p.realisedProfit),
+		Fee:                 weexDecimalString(p.fee),
+		CreateTime:          p.openTime,
+		UpdateTime:          p.closeTime,
+	}
+}
+
+func weexDecimal(value string) *big.Rat {
+	parsed := new(big.Rat)
+	if _, ok := parsed.SetString(strings.TrimSpace(value)); !ok {
+		return new(big.Rat)
+	}
+
+	return parsed
+}
+
+func weexDecimalString(value *big.Rat) string {
+	s := strings.TrimRight(value.FloatString(weexHistoryDecimals), "0")
+	s = strings.TrimRight(s, ".")
+	if s == "" || s == "-" || s == "-0" {
+		return "0"
+	}
+
+	return s
 }
