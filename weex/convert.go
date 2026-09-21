@@ -269,7 +269,7 @@ func (c *futures_converts) convertAlgoOrderList(in []futures_algoOrder) (out []e
 		slOrder := typ == "STOP" || typ == "STOP_MARKET"
 
 		price := item.Price
-		if price == "" || price == "0" || price == "0.0" {
+		if utils.StringToFloat(price) == 0 {
 			price = item.TriggerPrice
 		}
 
@@ -345,12 +345,12 @@ func (c *futures_converts) convertAlgoOrdersHistory(in []futures_algoOrdersHisto
 		}
 
 		price := strings.TrimSpace(item.Price)
-		if price == "" || price == "0" {
+		if utils.StringToFloat(price) == 0 {
 			price = strings.TrimSpace(item.TriggerPrice)
 		}
 
 		executedPrice := strings.TrimSpace(item.PriceAvg)
-		if executedPrice == "" || executedPrice == "0" {
+		if utils.StringToFloat(executedPrice) == 0 {
 			executedPrice = price
 		}
 
