@@ -178,9 +178,6 @@ func (s *futures_placeOrder) doAlgoOrder(ctx context.Context, opts ...utils.Requ
 	if s.symbol == nil || *s.symbol == "" {
 		return res, errors.New("symbol is required")
 	}
-	if s.side == nil {
-		return res, errors.New("side is required")
-	}
 	if s.positionSide == nil {
 		return res, errors.New("position side is required")
 	}
@@ -194,27 +191,25 @@ func (s *futures_placeOrder) doAlgoOrder(ctx context.Context, opts ...utils.Requ
 		return res, errors.New("client order id is required")
 	}
 
+	// /capi/v3/algoOrder would leave a standalone conditional order that WeEx does not show on the position.
 	r := &utils.Request{
 		Method:   http.MethodPost,
-		Endpoint: "/capi/v3/algoOrder",
+		Endpoint: "/capi/v3/placeTpSlOrder",
 		SecType:  utils.SecTypeSigned,
+	}
+
+	planType := "STOP_LOSS"
+	if s.tpOrder != nil && *s.tpOrder {
+		planType = "TAKE_PROFIT"
 	}
 
 	m := utils.Params{
 		"symbol":       *s.symbol,
-		"side":         strings.ToUpper(string(*s.side)),
-		"positionSide": strings.ToUpper(string(*s.positionSide)),
-		"quantity":     *s.size,
-		"triggerPrice": *s.price,
 		"clientAlgoId": *s.clientOrderID,
-	}
-
-	if s.tpOrder != nil && *s.tpOrder {
-		m["type"] = "TAKE_PROFIT_MARKET"
-	}
-
-	if s.slOrder != nil && *s.slOrder {
-		m["type"] = "STOP_MARKET"
+		"planType":     planType,
+		"triggerPrice": *s.price,
+		"quantity":     *s.size,
+		"positionSide": strings.ToUpper(string(*s.positionSide)),
 	}
 
 	r.SetFormParams(m)
@@ -224,23 +219,38 @@ func (s *futures_placeOrder) doAlgoOrder(ctx context.Context, opts ...utils.Requ
 		return res, err
 	}
 
-	var answ futures_placeOrder_Response
+	var answ []futures_placeTpSlOrder_Response
 	err = json.Unmarshal(data, &answ)
 	if err != nil {
 		return res, err
 	}
 
-	if !answ.Success {
-		if answ.ErrorMessage != "" {
-			return res, errors.New(answ.ErrorMessage)
-		}
-		if answ.ErrorCode != "" {
-			return res, errors.New(answ.ErrorCode)
-		}
-		return res, errors.New("place algo order failed")
+	if len(answ) == 0 {
+		return res, errors.New("place tp/sl order failed")
 	}
 
-	return s.convert.convertPlaceOrder(answ), nil
+	if !answ[0].Success {
+		if answ[0].ErrorMessage != "" {
+			return res, errors.New(answ[0].ErrorMessage)
+		}
+		if answ[0].ErrorCode != "" {
+			return res, errors.New(answ[0].ErrorCode)
+		}
+		return res, errors.New("place tp/sl order failed")
+	}
+
+	return s.convert.convertPlaceOrder(futures_placeOrder_Response{
+		OrderId:       answ[0].OrderId.String(),
+		ClientOrderId: *s.clientOrderID,
+		Success:       true,
+	}), nil
+}
+
+type futures_placeTpSlOrder_Response struct {
+	OrderId      json.Number `json:"orderId"`
+	Success      bool        `json:"success"`
+	ErrorCode    string      `json:"errorCode"`
+	ErrorMessage string      `json:"errorMessage"`
 }
 
 type futures_placeOrder_Response struct {
