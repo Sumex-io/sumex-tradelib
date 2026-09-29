@@ -532,6 +532,33 @@ func TestGetLeverage(t *testing.T) {
 	}
 }
 
+// Orderly keeps one leverage row per symbol and margin mode; reading the first row for the symbol
+// showed the cross leverage after an isolated change (and vice versa).
+func TestGetLeverageByMarginMode(t *testing.T) {
+	f, c := newFakePerpAPI(t)
+	f.on("GET /v1/account/leverages", 200, `{"rows":[
+		{"symbol":"PERP_ETH_USDC","leverage":5,"margin_mode":"CROSS"},
+		{"symbol":"PERP_ETH_USDC","leverage":3,"margin_mode":"ISOLATED"}
+	]}`)
+	f.on("GET /v1/account/info", 200, `{"account_id":"0xabc","max_leverage":10,"taker_fee_rate":5,"maker_fee_rate":2}`)
+
+	iso, err := c.NewGetLeverage().Symbol("PERP_ETH_USDC").MarginMode("isolated").Do(ctx)
+	if err != nil || iso.Leverage != "3" || iso.MarginMode != "ISOLATED" {
+		t.Errorf("isolated = %+v %v", iso, err)
+	}
+	cross, err := c.NewGetLeverage().Symbol("PERP_ETH_USDC").MarginMode("CROSS").Do(ctx)
+	if err != nil || cross.Leverage != "5" || cross.MarginMode != "CROSS" {
+		t.Errorf("cross = %+v %v", cross, err)
+	}
+	btc, err := c.NewGetLeverage().Symbol("PERP_BTC_USDC").MarginMode("ISOLATED").Do(ctx)
+	if err != nil || btc.Leverage != "10" || btc.MarginMode != "ISOLATED" {
+		t.Errorf("a mode with no row must fall back to the account leverage: %+v %v", btc, err)
+	}
+	if _, err := c.NewGetLeverage().Symbol("PERP_ETH_USDC").MarginMode("isolatd").Do(ctx); err == nil {
+		t.Error("a misspelt margin mode must be refused, not ignored")
+	}
+}
+
 func TestGetLeverageAcceptsBareArray(t *testing.T) {
 	f, c := newFakePerpAPI(t)
 	f.on("GET /v1/account/leverages", 200, `[{"symbol":"PERP_ETH_USDC","leverage":3}]`)

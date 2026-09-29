@@ -15,11 +15,20 @@ import (
 type futures_getLeverage struct {
 	callAPI callAPIFunc
 
-	symbol *string
+	symbol     *string
+	marginMode *string
 }
 
 func (s *futures_getLeverage) Symbol(symbol string) *futures_getLeverage {
 	s.symbol = &symbol
+	return s
+}
+
+// MarginMode picks which of the symbol's two leverage settings (cross or isolated) is read. Orderly
+// keeps one row per symbol and mode, so without it the first row for the symbol wins, whichever
+// mode that is.
+func (s *futures_getLeverage) MarginMode(marginMode string) *futures_getLeverage {
+	s.marginMode = &marginMode
 	return s
 }
 
@@ -31,6 +40,13 @@ func (s *futures_getLeverage) Do(ctx context.Context) (res entity.Futures_Levera
 		return res, errNoSymbol
 	}
 	symbol := strings.TrimSpace(*s.symbol)
+	marginMode := ""
+	if s.marginMode != nil && strings.TrimSpace(*s.marginMode) != "" {
+		marginMode, err = wireMarginMode(*s.marginMode)
+		if err != nil {
+			return res, err
+		}
+	}
 
 	data, err := s.callAPI(ctx, &request{method: http.MethodGet, path: "/v1/account/leverages", signed: true})
 	if err != nil {
@@ -41,9 +57,14 @@ func (s *futures_getLeverage) Do(ctx context.Context) (res entity.Futures_Levera
 		return res, err
 	}
 	for _, row := range rows {
-		if row.Symbol == symbol {
-			return leverageResult(symbol, row.Leverage.String(), normalizeMarginMode(row.MarginMode)), nil
+		if row.Symbol != symbol {
+			continue
 		}
+		rowMarginMode := normalizeMarginMode(row.MarginMode)
+		if marginMode != "" && rowMarginMode != marginMode {
+			continue
+		}
+		return leverageResult(symbol, row.Leverage.String(), rowMarginMode), nil
 	}
 
 	data, err = s.callAPI(ctx, &request{method: http.MethodGet, path: "/v1/account/info", signed: true})
@@ -57,7 +78,7 @@ func (s *futures_getLeverage) Do(ctx context.Context) (res entity.Futures_Levera
 	if info.MaxLeverage == "" {
 		return res, errors.New("xemus: no leverage setting found for " + symbol)
 	}
-	return leverageResult(symbol, info.MaxLeverage.String(), ""), nil
+	return leverageResult(symbol, info.MaxLeverage.String(), marginMode), nil
 }
 
 // leverageResult fills Long/ShortLeverage with the same value: Orderly has one leverage per symbol
