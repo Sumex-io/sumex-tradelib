@@ -179,7 +179,7 @@ func TestTransportSignsAndSendsExactBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := f.only(t, "GET", "/v1/orders")
-	if r.uri != "/v1/orders?size=500&status=INCOMPLETE&symbol=PERP_BTC_USDC" {
+	if r.uri != "/v1/orders?size=100&status=INCOMPLETE&symbol=PERP_BTC_USDC" {
 		t.Errorf("uri = %s", r.uri)
 	}
 	if r.header.Get("x-api-key") != goldenAPIKey || r.header.Get("x-timestamp") == "" {
@@ -440,7 +440,7 @@ func TestOrderListMergesRegularAndTpSlOrders(t *testing.T) {
 	if stop.OrderID != "algo-950" || stop.Type != "STOP_MARKET" || stop.PositionSide != "LONG" || stop.TpOrder || stop.SlOrder {
 		t.Errorf("stop = %+v", stop)
 	}
-	if r := f.only(t, "GET", "/v1/algo-orders"); r.uri != "/v1/algo-orders?size=500&status=INCOMPLETE" {
+	if r := f.only(t, "GET", "/v1/algo-orders"); r.uri != "/v1/algo-orders?size=100&status=INCOMPLETE" {
 		t.Errorf("algo uri = %s", r.uri)
 	}
 }
@@ -463,7 +463,7 @@ func TestOrdersHistory(t *testing.T) {
 		t.Errorf("got %+v", o)
 	}
 	r := f.only(t, "GET", "/v1/orders")
-	if r.uri != "/v1/orders?end_t=2000&size=500&sort_by=CREATED_TIME_DESC&start_t=1000&status=COMPLETED&symbol=PERP_BTC_USDC" {
+	if r.uri != "/v1/orders?end_t=2000&size=100&sort_by=CREATED_TIME_DESC&start_t=1000&status=COMPLETED&symbol=PERP_BTC_USDC" {
 		t.Errorf("uri = %s", r.uri)
 	}
 }

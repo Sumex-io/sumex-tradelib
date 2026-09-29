@@ -66,8 +66,8 @@ func (s *futures_ordersHistory) Do(ctx context.Context) (res []entity.Futures_Or
 }
 
 // historyQuery builds the symbol / start_t / end_t / size query the paginated history reads share.
-// The limit is clamped to perp-api's 1..500 rather than refused: the caller's limit is a UI page
-// size, and a larger one should still return the most perp-api will give.
+// The limit is clamped to 1..maxPageSize rather than refused: the caller's limit is a UI page
+// size, and a larger one should still return the most one page gives.
 func historyQuery(symbol *string, startTime, endTime, limit *int64) url.Values {
 	q := url.Values{}
 	if symbol != nil && strings.TrimSpace(*symbol) != "" {

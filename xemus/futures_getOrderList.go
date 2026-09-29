@@ -12,8 +12,9 @@ import (
 	"github.com/Sumex-io/sumex-tradelib/entity"
 )
 
-// maxPageSize is perp-api's cap on `size` for every paginated list.
-const maxPageSize = 500
+// maxPageSize is the largest `size` a paginated list takes. perp-api accepts 500, but Orderly
+// behind it answers a larger one with "size must be less than or equal to 100".
+const maxPageSize = 100
 
 type futures_getOrderList struct {
 	callAPI callAPIFunc
@@ -30,7 +31,7 @@ func (s *futures_getOrderList) Symbol(symbol string) *futures_getOrderList {
 // (GET /v1/orders?status=INCOMPLETE) and untriggered algo orders — every TP/SL this connector
 // places — (GET /v1/algo-orders?status=INCOMPLETE). Leaving the second out would render a
 // protected position as unprotected. Both reads are one full page; a full page is logged rather
-// than paged through, since a wallet with 500 resting orders is not a case the UI serves.
+// than paged through, since a wallet with 100 resting orders is not a case the UI serves.
 func (s *futures_getOrderList) Do(ctx context.Context) (res []entity.Futures_OrdersList, err error) {
 	query := func() url.Values {
 		q := url.Values{}
