@@ -284,27 +284,60 @@ func toInstrumentInfo(s symbolRow) (entity.Futures_InstrumentsInfo, error) {
 	}, nil
 }
 
-// toBalance follows the library convention: Balance excludes unrealized PnL, Equity includes it.
-// Orderly's total_collateral_value already carries unsettled PnL, so it is the equity, and the
-// balance is what remains once the open positions' unrealized PnL is taken out.
-func toBalance(p positionsResponse) []entity.FuturesBalance {
+// toBalance returns one row per collateral token, amounts in that token, following the library
+// convention: Balance excludes unrealized PnL, Equity includes it.
+//
+// Orderly settles every position's PnL in USDC, so the USDC row carries all of it: its equity is
+// the USDC holding plus the unsettled PnL of every position plus the margin set aside for
+// isolated positions, the same account value Orderly's SDK shows. Its Available is the account's
+// free collateral, which is in USD and already counts the other tokens at their haircut, because
+// that is what an order can use. The row is returned even at a zero holding, since a user
+// trading on other collateral still has PnL and free collateral there.
+//
+// Any other token's row is its holding. Orderly caps withdrawing it by the free collateral, which
+// a per-token figure cannot express, so its Available is the holding too.
+func toBalance(h holdingsResponse, p positionsResponse) []entity.FuturesBalance {
+	usdc := new(big.Rat)
+	var others []entity.FuturesBalance
+	for _, row := range h.Holding {
+		amount, ok := parseRat(row.Holding.String())
+		if !ok {
+			continue
+		}
+		if row.Token == "USDC" {
+			usdc.Add(usdc, amount)
+			continue
+		}
+		if amount.Sign() == 0 {
+			continue
+		}
+		qty := ratString(amount)
+		others = append(others, entity.FuturesBalance{Asset: row.Token, Balance: qty, Equity: qty, Available: qty, UnrealizedProfit: "0"})
+	}
+
+	equity := new(big.Rat).Set(usdc)
 	unrealized := new(big.Rat)
 	for _, row := range p.Rows {
+		if u, ok := parseRat(row.UnsettledPnl.String()); ok {
+			equity.Add(equity, u)
+		}
+		if row.MarginMode == "ISOLATED" {
+			if m, ok := parseRat(row.Margin.String()); ok {
+				equity.Add(equity, m)
+			}
+		}
 		if u, ok := parseRat(unrealizedPnl(row.PositionQty.String(), row.MarkPrice.String(), row.AverageOpenPrice.String())); ok {
 			unrealized.Add(unrealized, u)
 		}
 	}
-	equity := p.TotalCollateralValue.String()
 	upnl := ratString(unrealized)
-	return []entity.FuturesBalance{
-		{
-			Asset:            "USDC",
-			Balance:          sub(equity, upnl),
-			Equity:           equity,
-			Available:        p.FreeCollateral.String(),
-			UnrealizedProfit: upnl,
-		},
-	}
+	return append([]entity.FuturesBalance{{
+		Asset:            "USDC",
+		Balance:          ratString(new(big.Rat).Sub(equity, unrealized)),
+		Equity:           ratString(equity),
+		Available:        p.FreeCollateral.String(),
+		UnrealizedProfit: upnl,
+	}}, others...)
 }
 
 func toPosition(p positionRow) entity.Futures_Positions {

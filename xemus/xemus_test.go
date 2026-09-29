@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -325,7 +326,7 @@ const positionsFixture = `{
 	"total_collateral_value": 1015,
 	"rows": [
 		{"symbol":"PERP_BTC_USDC","position_qty":0.02,"cost_position":1200,"average_open_price":60000,"mark_price":61000,"unsettled_pnl":20,"est_liq_price":null,"leverage":10,"timestamp":1727000000000},
-		{"symbol":"PERP_ETH_USDC","position_qty":-1.5,"cost_position":-4500,"average_open_price":3000,"mark_price":2990,"unsettled_pnl":15,"est_liq_price":3500,"leverage":5,"margin_mode":"ISOLATED","timestamp":1727000000001},
+		{"symbol":"PERP_ETH_USDC","position_qty":-1.5,"cost_position":-4500,"average_open_price":3000,"mark_price":2990,"unsettled_pnl":15,"est_liq_price":3500,"leverage":5,"margin_mode":"ISOLATED","margin":300,"timestamp":1727000000001},
 		{"symbol":"PERP_SOL_USDC","position_qty":0,"cost_position":0,"average_open_price":0,"mark_price":150,"unsettled_pnl":0,"est_liq_price":null,"leverage":10,"timestamp":1727000000002}
 	]
 }`
@@ -357,14 +358,45 @@ func TestPositions(t *testing.T) {
 
 func TestBalance(t *testing.T) {
 	f, c := newFakePerpAPI(t)
+	f.on("GET /v1/account/holdings", 200, `{"holding":[
+		{"token":"USDC","holding":960,"frozen":10,"pending_short":0,"updated_time":1},
+		{"token":"ETH","holding":0.5,"frozen":0,"pending_short":0,"updated_time":1},
+		{"token":"SOL","holding":0,"frozen":0,"pending_short":0,"updated_time":1},
+		{"token":"WBTC","holding":"1e-3","frozen":0,"pending_short":0,"updated_time":1}
+	]}`)
 	f.on("GET /v1/positions", 200, positionsFixture)
 
 	got, err := c.NewGetBalance().Do(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := entity.FuturesBalance{Asset: "USDC", Balance: "980", Equity: "1015", Available: "900.5", UnrealizedProfit: "35"}
-	if len(got) != 1 || got[0] != want {
+	// USDC equity: 960 holding + 20 + 15 unsettled + 300 isolated margin; unrealized 20 + 15.
+	want := []entity.FuturesBalance{
+		{Asset: "USDC", Balance: "1260", Equity: "1295", Available: "900.5", UnrealizedProfit: "35"},
+		{Asset: "ETH", Balance: "0.5", Equity: "0.5", Available: "0.5", UnrealizedProfit: "0"},
+		{Asset: "WBTC", Balance: "0.001", Equity: "0.001", Available: "0.001", UnrealizedProfit: "0"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+func TestBalanceKeepsUSDCRowWithoutUSDCHolding(t *testing.T) {
+	f, c := newFakePerpAPI(t)
+	f.on("GET /v1/account/holdings", 200, `{"holding":[{"token":"ETH","holding":2,"frozen":0}]}`)
+	f.on("GET /v1/positions", 200, `{"free_collateral":5000,"total_collateral_value":6000,"rows":[
+		{"symbol":"PERP_BTC_USDC","position_qty":0.1,"cost_position":6000,"average_open_price":60000,"mark_price":59000,"unsettled_pnl":-100,"leverage":10,"timestamp":1}
+	]}`)
+
+	got, err := c.NewGetBalance().Do(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []entity.FuturesBalance{
+		{Asset: "USDC", Balance: "0", Equity: "-100", Available: "5000", UnrealizedProfit: "-100"},
+		{Asset: "ETH", Balance: "2", Equity: "2", Available: "2", UnrealizedProfit: "0"},
+	}
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
 }

@@ -12,17 +12,24 @@ type futures_getBalance struct {
 	callAPI callAPIFunc
 }
 
-// Do reads the balance off GET /v1/positions rather than /v1/account/holdings: the positions
-// response carries Orderly's account-level total_collateral_value and free_collateral next to the
-// rows the unrealized PnL is computed from, so one call yields a self-consistent snapshot.
+// Do reads GET /v1/account/holdings for each collateral token's settled balance and GET
+// /v1/positions for the PnL not settled into USDC yet and the account's free collateral.
 func (s *futures_getBalance) Do(ctx context.Context) (res []entity.FuturesBalance, err error) {
-	data, err := s.callAPI(ctx, &request{method: http.MethodGet, path: "/v1/positions", signed: true})
+	data, err := s.callAPI(ctx, &request{method: http.MethodGet, path: "/v1/account/holdings", signed: true})
 	if err != nil {
 		return res, err
 	}
-	var answ positionsResponse
-	if err := json.Unmarshal(data, &answ); err != nil {
+	var holdings holdingsResponse
+	if err := json.Unmarshal(data, &holdings); err != nil {
 		return res, err
 	}
-	return toBalance(answ), nil
+	data, err = s.callAPI(ctx, &request{method: http.MethodGet, path: "/v1/positions", signed: true})
+	if err != nil {
+		return res, err
+	}
+	var positions positionsResponse
+	if err := json.Unmarshal(data, &positions); err != nil {
+		return res, err
+	}
+	return toBalance(holdings, positions), nil
 }

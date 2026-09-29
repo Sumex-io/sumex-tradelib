@@ -122,15 +122,29 @@ type positionRow struct {
 	PositionQty      num    `json:"position_qty"`
 	AverageOpenPrice num    `json:"average_open_price"`
 	MarkPrice        num    `json:"mark_price"`
-	Leverage         num    `json:"leverage"`
-	MarginMode       string `json:"margin_mode"`
-	Timestamp        num    `json:"timestamp"`
+	UnsettledPnl     num    `json:"unsettled_pnl"`
+	// Margin is the margin allocated to an ISOLATED position, held outside the USDC holding.
+	Margin     num    `json:"margin"`
+	Leverage   num    `json:"leverage"`
+	MarginMode string `json:"margin_mode"`
+	Timestamp  num    `json:"timestamp"`
 }
 
 type positionsResponse struct {
 	Rows                 []positionRow `json:"rows"`
 	FreeCollateral       num           `json:"free_collateral"`
 	TotalCollateralValue num           `json:"total_collateral_value"`
+}
+
+// holdingsResponse is GET /v1/account/holdings: the settled balance of each collateral token.
+// PnL is not in it until it is settled into the USDC holding.
+type holdingsResponse struct {
+	Holding []holdingRow `json:"holding"`
+}
+
+type holdingRow struct {
+	Token   string `json:"token"`
+	Holding num    `json:"holding"`
 }
 
 type orderRow struct {
