@@ -1,4 +1,4 @@
-package sumex
+package xemus
 
 import (
 	"encoding/json"
@@ -159,24 +159,30 @@ type ordersResponse struct {
 }
 
 // algoOrderRow is one node of an algo order tree. A TP_SL / POSITIONAL_TP_SL root carries its
-// TAKE_PROFIT / STOP_LOSS legs in child_orders; a STOP root carries none.
+// TAKE_PROFIT / STOP_LOSS legs in child_orders; a BRACKET root carries one POSITIONAL_TP_SL,
+// which carries the legs; a STOP root carries none.
+//
+// is_activated is false on a leg switched off by an edit (Orderly's way of cancelling one leg of
+// two); absent, the leg is taken as live.
 type algoOrderRow struct {
-	AlgoOrderID   num            `json:"algo_order_id"`
-	ClientOrderID flexString     `json:"client_order_id"`
-	Symbol        string         `json:"symbol"`
-	AlgoType      string         `json:"algo_type"`
-	Side          string         `json:"side"`
-	Type          string         `json:"type"`
-	Quantity      num            `json:"quantity"`
-	TriggerPrice  num            `json:"trigger_price"`
-	Price         num            `json:"price"`
-	IsTriggered   flexBool       `json:"is_triggered"`
-	AlgoStatus    string         `json:"algo_status"`
-	ReduceOnly    bool           `json:"reduce_only"`
-	MarginMode    string         `json:"margin_mode"`
-	CreatedTime   num            `json:"created_time"`
-	UpdatedTime   num            `json:"updated_time"`
-	ChildOrders   []algoOrderRow `json:"child_orders"`
+	AlgoOrderID     num            `json:"algo_order_id"`
+	RootAlgoOrderID num            `json:"root_algo_order_id"`
+	ClientOrderID   flexString     `json:"client_order_id"`
+	Symbol          string         `json:"symbol"`
+	AlgoType        string         `json:"algo_type"`
+	Side            string         `json:"side"`
+	Type            string         `json:"type"`
+	Quantity        num            `json:"quantity"`
+	TriggerPrice    num            `json:"trigger_price"`
+	Price           num            `json:"price"`
+	IsTriggered     flexBool       `json:"is_triggered"`
+	IsActivated     *flexBool      `json:"is_activated"`
+	AlgoStatus      string         `json:"algo_status"`
+	ReduceOnly      bool           `json:"reduce_only"`
+	MarginMode      string         `json:"margin_mode"`
+	CreatedTime     num            `json:"created_time"`
+	UpdatedTime     num            `json:"updated_time"`
+	ChildOrders     []algoOrderRow `json:"child_orders"`
 }
 
 type algoOrdersResponse struct {

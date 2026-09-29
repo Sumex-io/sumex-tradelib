@@ -1,8 +1,8 @@
-// Package sumex is the connector for Sumex's own perpetuals venue: perp-api, a service in front of
+// Package xemus is the connector for Xemus, Sumex's own perpetuals venue: perp-api, a service in front of
 // Orderly Network. It speaks perp-api's REST contract, not Orderly's directly — perp-api holds the
 // Orderly keys and exposes a per-user ed25519 API key pair, which is what this connector signs
 // with (see request.go).
-package sumex
+package xemus
 
 import (
 	"context"
@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	tradeName_Spot    = "SUMEX_SPOT"
-	tradeName_Futures = "SUMEX_FUTURES"
+	tradeName_Spot    = "XEMUS_SPOT"
+	tradeName_Futures = "XEMUS_FUTURES"
 )
 
 // perp-api has no public constant host: it is a Sumex deployment whose address differs per
@@ -47,7 +47,7 @@ func baseURLFor(demo bool) string {
 	return prodBaseURL
 }
 
-var errHostNotConfigured = errors.New("sumex: no perp-api host is configured for this environment")
+var errHostNotConfigured = errors.New("xemus: no perp-api host is configured for this environment")
 
 // ===============SPOT=================
 

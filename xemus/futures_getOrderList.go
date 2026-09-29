@@ -1,4 +1,4 @@
-package sumex
+package xemus
 
 import (
 	"context"
@@ -61,7 +61,7 @@ func (s *futures_getOrderList) Do(ctx context.Context) (res []entity.Futures_Ord
 	}
 
 	if len(orders.Rows) >= maxPageSize || len(algos.Rows) >= maxPageSize {
-		log.Printf("sumex: open orders hit the %d-row page cap (orders=%d algo=%d); further rows are NOT in this response", maxPageSize, len(orders.Rows), len(algos.Rows))
+		log.Printf("xemus: open orders hit the %d-row page cap (orders=%d algo=%d); further rows are NOT in this response", maxPageSize, len(orders.Rows), len(algos.Rows))
 	}
 
 	res = make([]entity.Futures_OrdersList, 0, len(orders.Rows)+len(algos.Rows))

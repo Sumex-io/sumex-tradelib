@@ -1,4 +1,4 @@
-package sumex
+package xemus
 
 import (
 	"bytes"
@@ -42,9 +42,9 @@ type apiError struct {
 
 func (e apiError) Error() string {
 	if e.Code != "" || e.Message != "" {
-		return fmt.Sprintf("sumex: HTTP %d %s: %s", e.StatusCode, e.Code, e.Message)
+		return fmt.Sprintf("xemus: HTTP %d %s: %s", e.StatusCode, e.Code, e.Message)
 	}
-	return fmt.Sprintf("sumex: HTTP %d: %s", e.StatusCode, summarizeErrorBody(e.Raw))
+	return fmt.Sprintf("xemus: HTTP %d: %s", e.StatusCode, summarizeErrorBody(e.Raw))
 }
 
 const maxErrorBodyBytes = 512
@@ -108,7 +108,7 @@ func (c *transport) httpClientFor() (*http.Client, error) {
 	}
 	proxyURL, err := url.Parse(c.Proxy)
 	if err != nil {
-		return nil, fmt.Errorf("sumex: invalid proxy: %w", err)
+		return nil, fmt.Errorf("xemus: invalid proxy: %w", err)
 	}
 	return &http.Client{
 		Timeout: httpClient.Timeout,
@@ -201,7 +201,7 @@ func (c *transport) callAPI(ctx context.Context, r *request) ([]byte, error) {
 func signPayload(secret, timestamp, method, requestURI string, body []byte) (string, error) {
 	seed, err := base64.RawURLEncoding.DecodeString(secret)
 	if err != nil || len(seed) != ed25519.SeedSize {
-		return "", errors.New("sumex: the API secret is not a base64url-encoded 32-byte ed25519 seed")
+		return "", errors.New("xemus: the API secret is not a base64url-encoded 32-byte ed25519 seed")
 	}
 	msg := timestamp + "\n" + strings.ToUpper(method) + "\n" + requestURI + "\n" + string(body)
 	sig := ed25519.Sign(ed25519.NewKeyFromSeed(seed), []byte(msg))

@@ -1,4 +1,4 @@
-package sumex
+package xemus
 
 import (
 	"context"
@@ -99,25 +99,30 @@ func (s *futures_placeOrder) SlPrice(slPrice string) *futures_placeOrder {
 // of a VALIDATION_ERROR path.
 var clientOrderIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,36}$`)
 
-// Do places either a regular order (POST /v1/orders) or, when TpOrder or SlOrder is set, a
-// take-profit or stop-loss (POST /v1/algo-orders, a single-leg TP_SL).
+// Do places one of three things:
+//   - a regular order (POST /v1/orders);
+//   - with TpOrder or SlOrder set, a take-profit or stop-loss on the open position
+//     (POST /v1/algo-orders, a single-leg TP_SL);
+//   - with TpPrice and/or SlPrice on an entry order, a BRACKET (POST /v1/algo-orders): the entry
+//     plus a POSITIONAL_TP_SL that Orderly activates once the entry fills. Its legs close the WHOLE
+//     position, not only what this entry adds — the same as a TP/SL attached on Bybit or OKX in
+//     their default full-position mode.
 //
-// A TP/SL price attached to a regular entry order is REFUSED, not ignored. Orderly can only attach
-// one through a BRACKET algo order, which this connector does not place; dropping it silently would
-// leave the user believing a position is protected when it is not.
+// A bracket is an algo order until its entry is placed, so the id it returns — and the id its
+// open-order row carries — is algoOrderRef(algo id).
 func (s *futures_placeOrder) Do(ctx context.Context) (res []entity.PlaceOrder, err error) {
 	if s.symbol == nil || strings.TrimSpace(*s.symbol) == "" {
 		return nil, errNoSymbol
 	}
 	if s.side == nil {
-		return nil, errors.New("sumex: placeOrder requires a side")
+		return nil, errors.New("xemus: placeOrder requires a side")
 	}
 	side := strings.ToUpper(strings.TrimSpace(string(*s.side)))
 	if side != "BUY" && side != "SELL" {
-		return nil, fmt.Errorf("sumex: unknown side %q (want BUY or SELL)", side)
+		return nil, fmt.Errorf("xemus: unknown side %q (want BUY or SELL)", side)
 	}
 	if s.size == nil {
-		return nil, errors.New("sumex: placeOrder requires a size")
+		return nil, errors.New("xemus: placeOrder requires a size")
 	}
 	quantity, err := wireNumber(*s.size, "size")
 	if err != nil {
@@ -128,7 +133,7 @@ func (s *futures_placeOrder) Do(ctx context.Context) (res []entity.PlaceOrder, e
 	if s.clientOrderID != nil {
 		clientOrderID = strings.TrimSpace(*s.clientOrderID)
 		if clientOrderID != "" && !clientOrderIDPattern.MatchString(clientOrderID) {
-			return nil, fmt.Errorf("sumex: clientOrderID %q must be 1-36 characters of A-Z, a-z, 0-9, _ or -", clientOrderID)
+			return nil, fmt.Errorf("xemus: clientOrderID %q must be 1-36 characters of A-Z, a-z, 0-9, _ or -", clientOrderID)
 		}
 	}
 	marginMode := ""
@@ -141,7 +146,7 @@ func (s *futures_placeOrder) Do(ctx context.Context) (res []entity.PlaceOrder, e
 	isTakeProfit := s.tpOrder != nil && *s.tpOrder
 	isStopLoss := s.slOrder != nil && *s.slOrder
 	if isTakeProfit && isStopLoss {
-		return nil, errors.New("sumex: an order cannot be both take-profit and stop-loss")
+		return nil, errors.New("xemus: an order cannot be both take-profit and stop-loss")
 	}
 
 	body := map[string]interface{}{"symbol": strings.TrimSpace(*s.symbol)}
@@ -153,7 +158,9 @@ func (s *futures_placeOrder) Do(ctx context.Context) (res []entity.PlaceOrder, e
 	}
 
 	path := "/v1/orders"
-	if isTakeProfit || isStopLoss {
+	isBracket := false
+	switch {
+	case isTakeProfit || isStopLoss:
 		path = "/v1/algo-orders"
 		leg, err := s.triggerLeg(side, isTakeProfit)
 		if err != nil {
@@ -162,10 +169,12 @@ func (s *futures_placeOrder) Do(ctx context.Context) (res []entity.PlaceOrder, e
 		body["algo_type"] = "TP_SL"
 		body["quantity"] = quantity
 		body["child_orders"] = []interface{}{leg}
-	} else {
-		if hasValue(s.tpPrice) || hasValue(s.slPrice) {
-			return nil, errors.New("sumex: a take-profit or stop-loss cannot be attached to an entry order; place it once the position is open")
+	case hasValue(s.tpPrice) || hasValue(s.slPrice):
+		path, isBracket = "/v1/algo-orders", true
+		if err := s.bracket(body, side, quantity); err != nil {
+			return nil, err
 		}
+	default:
 		orderType, err := s.regularOrderType()
 		if err != nil {
 			return nil, err
@@ -175,7 +184,7 @@ func (s *futures_placeOrder) Do(ctx context.Context) (res []entity.PlaceOrder, e
 		body["order_quantity"] = quantity
 		if orderType != "MARKET" {
 			if !hasValue(s.price) {
-				return nil, fmt.Errorf("sumex: a %s order requires a price", orderType)
+				return nil, fmt.Errorf("xemus: a %s order requires a price", orderType)
 			}
 			price, err := wireNumber(*s.price, "price")
 			if err != nil {
@@ -200,8 +209,12 @@ func (s *futures_placeOrder) Do(ctx context.Context) (res []entity.PlaceOrder, e
 	if resolvedClientOrderID == "" {
 		resolvedClientOrderID = clientOrderID
 	}
+	orderID := answ.OrderID.String()
+	if isBracket {
+		orderID = algoOrderRef(orderID)
+	}
 	return []entity.PlaceOrder{{
-		OrderID:       answ.OrderID.String(),
+		OrderID:       orderID,
 		ClientOrderID: resolvedClientOrderID,
 		Ts:            time.Now().UnixMilli(),
 	}}, nil
@@ -223,7 +236,7 @@ func (s *futures_placeOrder) triggerLeg(side string, isTakeProfit bool) (map[str
 		raw = dedicated
 	}
 	if !hasValue(raw) {
-		return nil, fmt.Errorf("sumex: a %s order requires a trigger price", strings.ToLower(strings.ReplaceAll(algoType, "_", "-")))
+		return nil, fmt.Errorf("xemus: a %s order requires a trigger price", strings.ToLower(strings.ReplaceAll(algoType, "_", "-")))
 	}
 	trigger, err := wireNumber(*raw, "trigger price")
 	if err != nil {
@@ -237,15 +250,82 @@ func (s *futures_placeOrder) triggerLeg(side string, isTakeProfit bool) (map[str
 	}, nil
 }
 
+// bracket fills body with a BRACKET: the entry, and one POSITIONAL_TP_SL group holding a
+// TAKE_PROFIT and/or STOP_LOSS leg on the closing side. Each leg closes at market
+// (CLOSE_POSITION) once triggered, for the reason given on triggerLeg. perp-api checks that the
+// legs sit on the right sides of each other and of a LIMIT entry's price.
+func (s *futures_placeOrder) bracket(body map[string]interface{}, side string, quantity json.Number) error {
+	orderType, err := s.regularOrderType()
+	if err != nil {
+		return err
+	}
+	// Orderly's bracket entry is MARKET or LIMIT only.
+	if orderType != "MARKET" && orderType != "LIMIT" {
+		return fmt.Errorf("xemus: a take-profit or stop-loss can only be attached to a MARKET or LIMIT order, not %s", orderType)
+	}
+	// perp-api's bracket schema has no reduce_only and would strip it, turning a closing order
+	// into an opening one.
+	if s.reduce != nil && *s.reduce {
+		return errors.New("xemus: a take-profit or stop-loss cannot be attached to a reduce-only order")
+	}
+
+	body["algo_type"] = "BRACKET"
+	body["side"] = side
+	body["type"] = orderType
+	body["quantity"] = quantity
+	if orderType == "LIMIT" {
+		if !hasValue(s.price) {
+			return errors.New("xemus: a LIMIT order requires a price")
+		}
+		price, err := wireNumber(*s.price, "price")
+		if err != nil {
+			return err
+		}
+		body["price"] = price
+	}
+
+	closingSide := "SELL"
+	if side == "SELL" {
+		closingSide = "BUY"
+	}
+	var legs []interface{}
+	for _, l := range []struct {
+		algoType, label string
+		price           *string
+	}{
+		{"TAKE_PROFIT", "take-profit price", s.tpPrice},
+		{"STOP_LOSS", "stop-loss price", s.slPrice},
+	} {
+		if !hasValue(l.price) {
+			continue
+		}
+		trigger, err := wireNumber(*l.price, l.label)
+		if err != nil {
+			return err
+		}
+		legs = append(legs, map[string]interface{}{
+			"algo_type":     l.algoType,
+			"side":          closingSide,
+			"type":          "CLOSE_POSITION",
+			"trigger_price": trigger,
+		})
+	}
+	body["child_orders"] = []interface{}{map[string]interface{}{
+		"algo_type":    "POSITIONAL_TP_SL",
+		"child_orders": legs,
+	}}
+	return nil
+}
+
 func (s *futures_placeOrder) regularOrderType() (string, error) {
 	if s.orderType == nil || strings.TrimSpace(string(*s.orderType)) == "" {
-		return "", errors.New("sumex: placeOrder requires an order type")
+		return "", errors.New("xemus: placeOrder requires an order type")
 	}
 	switch t := strings.ToUpper(strings.TrimSpace(string(*s.orderType))); t {
 	case "MARKET", "LIMIT", "IOC", "FOK", "POST_ONLY":
 		return t, nil
 	default:
-		return "", fmt.Errorf("sumex: unsupported order type %q (want MARKET, LIMIT, IOC, FOK or POST_ONLY; use TpOrder/SlOrder for a trigger order)", t)
+		return "", fmt.Errorf("xemus: unsupported order type %q (want MARKET, LIMIT, IOC, FOK or POST_ONLY; use TpOrder/SlOrder for a trigger order)", t)
 	}
 }
 

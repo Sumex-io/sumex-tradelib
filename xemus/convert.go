@@ -1,4 +1,4 @@
-package sumex
+package xemus
 
 import (
 	"encoding/json"
@@ -135,11 +135,11 @@ var plainPositiveDecimal = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?$`)
 func wireNumber(s, label string) (json.Number, error) {
 	s = strings.TrimSpace(s)
 	if !plainPositiveDecimal.MatchString(s) {
-		return "", fmt.Errorf("sumex: %s %q is not a plain decimal", label, s)
+		return "", fmt.Errorf("xemus: %s %q is not a plain decimal", label, s)
 	}
 	r, _ := parseRat(s)
 	if r.Sign() <= 0 {
-		return "", fmt.Errorf("sumex: %s must be greater than zero", label)
+		return "", fmt.Errorf("xemus: %s must be greater than zero", label)
 	}
 	return json.Number(s), nil
 }
@@ -149,11 +149,11 @@ func wireNumber(s, label string) (json.Number, error) {
 func wireLeverage(s string) (int64, error) {
 	r, ok := parseRat(s)
 	if !ok || !r.IsInt() {
-		return 0, fmt.Errorf("sumex: leverage %q must be a whole number", s)
+		return 0, fmt.Errorf("xemus: leverage %q must be a whole number", s)
 	}
 	v := r.Num()
 	if !v.IsInt64() || v.Int64() < 1 || v.Int64() > 100 {
-		return 0, fmt.Errorf("sumex: leverage %q must be between 1 and 100", s)
+		return 0, fmt.Errorf("xemus: leverage %q must be between 1 and 100", s)
 	}
 	return v.Int64(), nil
 }
@@ -183,7 +183,7 @@ func decodeRows(data []byte, out interface{}) error {
 func splitSymbol(symbol string) (base, quote string, err error) {
 	parts := strings.Split(symbol, "_")
 	if len(parts) != 3 || parts[0] != "PERP" || parts[1] == "" || parts[2] == "" {
-		return "", "", fmt.Errorf("sumex: unexpected symbol %q", symbol)
+		return "", "", fmt.Errorf("xemus: unexpected symbol %q", symbol)
 	}
 	return parts[1], parts[2], nil
 }
@@ -209,7 +209,7 @@ func normalizeOrderType(t string) string {
 	case "LIMIT", "IOC", "FOK", "POST_ONLY", "ASK", "BID":
 		return "LIMIT"
 	default:
-		log.Printf("sumex: unknown order type %q reported as LIMIT", t)
+		log.Printf("xemus: unknown order type %q reported as LIMIT", t)
 		return "LIMIT"
 	}
 }
@@ -356,19 +356,23 @@ func toOrder(o orderRow) entity.Futures_OrdersList {
 	}
 }
 
-// toAlgoOrders flattens one untriggered algo order into open-order rows.
+// toAlgoOrders flattens one open algo order into open-order rows.
 //
-// Every row carries the ROOT algo order id, because that is the id perp-api cancels by
-// (DELETE /v1/algo-orders/:id). For a single-leg TP_SL — the only kind this connector places —
-// that is exactly the leg. A two-leg TP_SL placed elsewhere yields two rows sharing one id, and
-// cancelling either cancels both.
+// TP/SL rows carry the ROOT algo order id with TpOrder/SlOrder set, because that is the id
+// perp-api cancels by (DELETE /v1/algo-orders/:id) and the flag is how the platform routes the
+// cancel there. For a single-leg TP_SL — the kind this connector places on an open position — that
+// is exactly the leg. A two-leg TP/SL yields two rows sharing one id: cancelling either cancels
+// both, while an amend names its leg through TpOrder/SlOrder.
+//
+// A row that is an algo order but not a TP/SL — a stop order, or a bracket whose entry is not yet
+// placed — gets no flag, so its id carries algoOrderIDPrefix instead.
 func toAlgoOrders(root algoOrderRow) []entity.Futures_OrdersList {
-	if root.IsTriggered {
-		// A triggered algo order has become a regular order, which GET /v1/orders already lists.
-		return nil
-	}
 	rootID := root.AlgoOrderID.String()
-	base := func(n algoOrderRow) entity.Futures_OrdersList {
+	// A leg group surfaced on its own row still cancels through the tree it belongs to.
+	if r := root.RootAlgoOrderID.String(); r != "" && r != "0" {
+		rootID = r
+	}
+	base := func(n algoOrderRow, quantity num) entity.Futures_OrdersList {
 		side := strings.ToUpper(strings.TrimSpace(n.Side))
 		if side == "" {
 			side = strings.ToUpper(strings.TrimSpace(root.Side))
@@ -378,7 +382,7 @@ func toAlgoOrders(root algoOrderRow) []entity.Futures_OrdersList {
 			OrderID:       rootID,
 			ClientOrderID: string(root.ClientOrderID),
 			Side:          side,
-			PositionSize:  root.Quantity.String(),
+			PositionSize:  quantity.String(),
 			ExecutedSize:  "0",
 			// The UI shows a trigger order at its trigger level; the limit price of a LIMIT
 			// variant is not the number the user set.
@@ -389,12 +393,10 @@ func toAlgoOrders(root algoOrderRow) []entity.Futures_OrdersList {
 			MarginMode: normalizeMarginMode(root.MarginMode),
 		}
 	}
-
-	switch strings.ToUpper(root.AlgoType) {
-	case "TP_SL", "POSITIONAL_TP_SL":
+	legRows := func(group algoOrderRow) []entity.Futures_OrdersList {
 		var out []entity.Futures_OrdersList
-		for _, leg := range root.ChildOrders {
-			if leg.IsTriggered {
+		for _, leg := range group.ChildOrders {
+			if bool(leg.IsTriggered) || !leg.isLive() {
 				continue
 			}
 			isTakeProfit := strings.EqualFold(leg.AlgoType, "TAKE_PROFIT")
@@ -402,7 +404,7 @@ func toAlgoOrders(root algoOrderRow) []entity.Futures_OrdersList {
 			if !isTakeProfit && !isStopLoss {
 				continue
 			}
-			row := base(leg)
+			row := base(leg, group.Quantity)
 			row.PositionSide = derivePositionSide(row.Side, true)
 			row.Type = triggerOrderType(isTakeProfit, leg.Type)
 			row.TpOrder = isTakeProfit
@@ -410,18 +412,52 @@ func toAlgoOrders(root algoOrderRow) []entity.Futures_OrdersList {
 			out = append(out, row)
 		}
 		return out
+	}
+
+	switch strings.ToUpper(root.AlgoType) {
+	case "TP_SL", "POSITIONAL_TP_SL":
+		if root.IsTriggered {
+			return nil
+		}
+		return legRows(root)
 	case "STOP":
-		row := base(root)
+		if root.IsTriggered {
+			// A triggered stop has become a regular order, which GET /v1/orders already lists.
+			return nil
+		}
+		row := base(root, root.Quantity)
+		row.OrderID = algoOrderRef(rootID)
 		row.PositionSide = derivePositionSide(row.Side, root.ReduceOnly)
 		row.Type = triggerOrderType(false, root.Type)
 		return []entity.Futures_OrdersList{row}
+	case "BRACKET":
+		if !root.IsTriggered {
+			// The entry itself, still an algo order: shown as the MARKET / LIMIT order it is, at
+			// its own price. Its TP/SL legs are not live until it fills, so they are not listed.
+			row := base(root, root.Quantity)
+			row.OrderID = algoOrderRef(rootID)
+			row.Price = root.Price.String()
+			row.PositionSide = derivePositionSide(row.Side, false)
+			row.Type = normalizeOrderType(root.Type)
+			return []entity.Futures_OrdersList{row}
+		}
+		// The entry has been placed; what remains open is the position TP/SL.
+		var out []entity.Futures_OrdersList
+		for _, group := range root.ChildOrders {
+			if strings.EqualFold(group.AlgoType, "POSITIONAL_TP_SL") && !bool(group.IsTriggered) {
+				out = append(out, legRows(group)...)
+			}
+		}
+		return out
 	default:
-		// TRAILING_STOP and BRACKET are not placed by this connector; showing them with a guessed
-		// type would invite a cancel through the wrong route.
-		log.Printf("sumex: open algo order %s of type %q not listed", rootID, root.AlgoType)
+		// TRAILING_STOP is not placed by this connector; showing it with a guessed type would
+		// invite an edit through the wrong fields.
+		log.Printf("xemus: open algo order %s of type %q not listed", rootID, root.AlgoType)
 		return nil
 	}
 }
+
+func (a algoOrderRow) isLive() bool { return a.IsActivated == nil || bool(*a.IsActivated) }
 
 func toOrderHistory(o orderRow) entity.Futures_OrdersHistory {
 	side := strings.ToUpper(strings.TrimSpace(o.Side))
@@ -497,6 +533,6 @@ func sortInstruments(out []entity.Futures_InstrumentsInfo) {
 	sort.Slice(out, func(i, j int) bool { return out[i].Symbol < out[j].Symbol })
 }
 
-var errNoSymbol = errors.New("sumex: symbol is required")
+var errNoSymbol = errors.New("xemus: symbol is required")
 
 func formatInt(v int64) string { return strconv.FormatInt(v, 10) }
