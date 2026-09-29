@@ -14,6 +14,12 @@ type AccountInformation struct {
 
 type SignAuthStream struct {
 	Signature string `json:"signature" bson:"signature"`
+	// Set only by venues whose stream login needs more than a signature (xemus: Orderly's private
+	// WebSocket takes the signed timestamp, the account id and the key alongside it).
+	Timestamp int64  `json:"timestamp,omitempty" bson:"timestamp,omitempty"`
+	AccountID string `json:"accountId,omitempty" bson:"accountId,omitempty"`
+	Key       string `json:"key,omitempty" bson:"key,omitempty"`
+	URL       string `json:"url,omitempty" bson:"url,omitempty"`
 }
 
 type AccountInformationExtraInfo struct {
