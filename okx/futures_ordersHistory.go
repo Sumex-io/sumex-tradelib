@@ -238,6 +238,8 @@ type futures_ordersHistory_Response struct {
 	Pnl    string `json:"pnl"`
 	Lever  string `json:"lever"`
 
+	ReduceOnly string `json:"reduceOnly"`
+
 	OrdType string `json:"ordType"`
 	State   string `json:"state"`
 	TdMode  string `json:"tdMode"`
@@ -284,11 +286,8 @@ func convertOrdersHistoryOKX(in []futures_ordersHistory_Response) (out []entity.
 		hedgeMode := false
 		posSide := item.PosSide
 		if posSide == "net" || posSide == "" {
-			if strings.ToUpper(item.Side) == "SELL" {
-				posSide = "SHORT"
-			} else {
-				posSide = "LONG"
-			}
+			isClosing := item.ReduceOnly == "true" || utils.StringToFloat(item.Pnl) != 0
+			posSide = netPositionSide(item.Side, isClosing)
 		} else {
 			hedgeMode = true
 			posSide = strings.ToUpper(posSide)
