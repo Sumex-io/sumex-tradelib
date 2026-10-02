@@ -75,6 +75,7 @@ type futures_Position struct {
 	Leverage       string `json:"leverage"`
 	AvgPrice       string `json:"avgPrice"`
 	MarkPrice      string `json:"markPrice"`
+	LiqPrice       string `json:"liqPrice"`
 	UnrealisedPnl  string `json:"unrealisedPnl"`
 	CurRealisedPnl string `json:"curRealisedPnl"`
 	PositionValue  string `json:"positionValue"`
