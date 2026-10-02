@@ -271,9 +271,10 @@ func (c *futures_converts) convertPositionsHistory(in []futures_PositionsHistory
 			Fee:                 utils.FloatToStringAll((0 - utils.StringToFloat(item.OpenFee)) + (0 - utils.StringToFloat(item.CloseFee))),
 			// Funding:             item.TotalFunding,
 			// MarginMode:          mMode,
-			Leverage:   item.Leverage,
-			CreateTime: utils.StringToInt64(item.CreatedTime),
-			UpdateTime: utils.StringToInt64(item.UpdatedTime),
+			Leverage:      item.Leverage,
+			CreateTime:    utils.StringToInt64(item.CreatedTime),
+			UpdateTime:    utils.StringToInt64(item.UpdatedTime),
+			IsLiquidation: item.ExecType == "BustTrade",
 		})
 	}
 	return out

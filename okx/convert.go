@@ -261,6 +261,7 @@ func (c *futures_converts) convertPositionsHistory(in []futures_PositionsHistory
 			MarginMode:          mMode,
 			CreateTime:          utils.StringToInt64(item.CTime),
 			UpdateTime:          utils.StringToInt64(item.UTime),
+			IsLiquidation:       item.Type == "3" || item.Type == "4",
 		})
 	}
 	return out

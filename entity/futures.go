@@ -69,6 +69,7 @@ type Futures_PositionsHistory struct {
 	MarginMode          string `json:"marginMode" bson:"marginMode"`
 	CreateTime          int64  `json:"createTime" bson:"createTime"`
 	UpdateTime          int64  `json:"updateTime" bson:"updateTime"`
+	IsLiquidation       bool   `json:"isLiquidation,omitempty" bson:"isLiquidation,omitempty"`
 }
 
 type Futures_OrdersHistory struct {
