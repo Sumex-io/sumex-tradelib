@@ -3,6 +3,7 @@ package gateio
 import (
 	"context"
 	"encoding/json"
+	"math/big"
 	"net/http"
 	"strings"
 
@@ -78,6 +79,7 @@ func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOpt
 		}
 
 		res = append(res, convertGateioFinishedOrdersToHistory(orders)...)
+		s.attachFees(ctx, res, opts...)
 	}
 
 	// ---------------- 2) FINISHED TRIGGER / TP-SL ORDERS ----------------
@@ -199,7 +201,6 @@ func convertGateioFinishedOrdersToHistory(answ []futures_ordersHistory_Response)
 			ExecutedSize:  utils.Int64ToString(sizeAbs),
 			Price:         item.Price,
 			ExecutedPrice: item.Fill_price,
-			Fee:           utils.FloatToStringAll(utils.StringToFloat(item.Mkfr) + utils.StringToFloat(item.Tkfr)),
 			Status:        strings.ToUpper(item.Status),
 			CreateTime:    int64(item.Create_time * 1000.0),
 			UpdateTime:    int64(item.Update_time * 1000.0),
@@ -296,4 +297,65 @@ func convertGateioFinishedPriceOrdersToHistory(in []gateio_priceOrderHistory_Res
 	}
 
 	return out
+}
+
+type gateio_futuresTrade struct {
+	OrderID string `json:"order_id"`
+	Fee     string `json:"fee"`
+}
+
+// Gate orders carry only fee rates (mkfr/tkfr), so the fee is summed from one page of fills; without them it stays empty.
+func (s *futures_ordersHistory) attachFees(ctx context.Context, orders []entity.Futures_OrdersHistory, opts ...utils.RequestOption) {
+	var from, to int64
+	for _, order := range orders {
+		if from == 0 || order.CreateTime < from {
+			from = order.CreateTime
+		}
+		if order.UpdateTime > to {
+			to = order.UpdateTime
+		}
+	}
+	if from == 0 || to < from {
+		return
+	}
+
+	r := &utils.Request{
+		Method:   http.MethodGet,
+		Endpoint: strings.Replace("/api/v4/futures/{settle}/my_trades_timerange", "{settle}", *s.settle, 1),
+		SecType:  utils.SecTypeSigned,
+	}
+	m := utils.Params{"from": from / 1000, "to": to/1000 + 1, "limit": 1000}
+	if s.symbol != nil && *s.symbol != "" {
+		m["contract"] = *s.symbol
+	}
+	r.SetParams(m)
+
+	data, _, err := s.callAPI(ctx, r, opts...)
+	if err != nil {
+		return
+	}
+
+	var trades []gateio_futuresTrade
+	if err := json.Unmarshal(data, &trades); err != nil {
+		return
+	}
+
+	fees := make(map[string]*big.Rat)
+	for _, trade := range trades {
+		fee, ok := new(big.Rat).SetString(strings.TrimSpace(trade.Fee))
+		if !ok {
+			continue
+		}
+		if fees[trade.OrderID] == nil {
+			fees[trade.OrderID] = new(big.Rat)
+		}
+		fees[trade.OrderID].Add(fees[trade.OrderID], fee)
+	}
+
+	for i := range orders {
+		if fee, ok := fees[orders[i].OrderID]; ok {
+			paid := strings.TrimRight(new(big.Rat).Neg(fee).FloatString(12), "0")
+			orders[i].Fee = strings.TrimSuffix(paid, ".")
+		}
+	}
 }
