@@ -3,9 +3,11 @@ package katana
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Sumex-io/sumex-tradelib/entity"
 )
@@ -20,6 +22,58 @@ import (
 
 // --- getAccountInfo ---
 
+// authorizedDelegatedKeys answers GET /v1/delegatedKeys with testPrivKey's address, valid for a day.
+func authorizedDelegatedKeys(t *testing.T) http.HandlerFunc {
+	return delegatedKeysHandler(t, time.Now().Add(24*time.Hour).UnixMilli())
+}
+
+func delegatedKeysHandler(t *testing.T, expiresMs int64) http.HandlerFunc {
+	address, err := (&katanaSigner{privKeyHex: testPrivKey}).delegatedAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("wallet") != "0xWALLET" {
+			t.Errorf("delegatedKeys wallet = %q, want 0xWALLET", r.URL.Query().Get("wallet"))
+		}
+		writeJSON(t, w, fmt.Sprintf(`[{"delegatedKey":%q,"userAgent":"x","time":1,"expires":%d}]`, strings.ToLower(address), expiresMs))
+	}
+}
+
+// TestGetAccountInfoRejectsAnExpiredSessionKey: an expired delegated key keeps reads working but
+// fails every trade, so the connection must be refused (and flagged on sumex-api's re-check).
+func TestGetAccountInfoRejectsAnExpiredSessionKey(t *testing.T) {
+	server := muxServer(t, map[string]http.HandlerFunc{
+		"/v1/wallets":       func(w http.ResponseWriter, r *http.Request) { writeJSON(t, w, singleWalletFixture) },
+		"/v1/delegatedKeys": delegatedKeysHandler(t, time.Now().Add(-time.Minute).UnixMilli()),
+	})
+	defer server.Close()
+
+	c := NewFuturesClient("k", "s", testPrivKey)
+	c.BaseURL = server.URL
+	_, err := c.NewGetAccountInfo().Do(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "session key") {
+		t.Fatalf("err = %v, want the expired session key error", err)
+	}
+}
+
+// TestGetAccountInfoRejectsARevokedSessionKey: a key missing from the list (revoked, or authorized
+// for another wallet) is refused the same way.
+func TestGetAccountInfoRejectsARevokedSessionKey(t *testing.T) {
+	server := muxServer(t, map[string]http.HandlerFunc{
+		"/v1/wallets":       func(w http.ResponseWriter, r *http.Request) { writeJSON(t, w, singleWalletFixture) },
+		"/v1/delegatedKeys": func(w http.ResponseWriter, r *http.Request) { writeJSON(t, w, `[]`) },
+	})
+	defer server.Close()
+
+	c := NewFuturesClient("k", "s", testPrivKey)
+	c.BaseURL = server.URL
+	_, err := c.NewGetAccountInfo().Do(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "session key") {
+		t.Fatalf("err = %v, want the revoked session key error", err)
+	}
+}
+
 // TestGetAccountInfoMapsWalletAndHardcodedPermissions asserts against a hand-written literal
 // response, not a value recomputed via the code under test.
 func TestGetAccountInfoMapsWalletAndHardcodedPermissions(t *testing.T) {
@@ -27,6 +81,7 @@ func TestGetAccountInfoMapsWalletAndHardcodedPermissions(t *testing.T) {
 		"/v1/wallets": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(t, w, singleWalletFixture)
 		},
+		"/v1/delegatedKeys": authorizedDelegatedKeys(t),
 	})
 	defer server.Close()
 
@@ -67,6 +122,7 @@ func TestFuturesGetAccountInfoMatchesTheSpotClient(t *testing.T) {
 		"/v1/wallets": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(t, w, singleWalletFixture)
 		},
+		"/v1/delegatedKeys": authorizedDelegatedKeys(t),
 	})
 	defer server.Close()
 
@@ -113,6 +169,7 @@ func TestGetAccountInfoJSONContract(t *testing.T) {
 		"/v1/wallets": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(t, w, singleWalletFixture)
 		},
+		"/v1/delegatedKeys": authorizedDelegatedKeys(t),
 	})
 	defer server.Close()
 
@@ -143,6 +200,7 @@ func TestGetAccountInfoRejectsAMalformedDelegatedKey(t *testing.T) {
 		"/v1/wallets": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(t, w, singleWalletFixture)
 		},
+		"/v1/delegatedKeys": authorizedDelegatedKeys(t),
 	})
 	defer server.Close()
 
@@ -165,6 +223,7 @@ func TestGetAccountInfoRejectsAnEmptyDelegatedKey(t *testing.T) {
 		"/v1/wallets": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(t, w, singleWalletFixture)
 		},
+		"/v1/delegatedKeys": authorizedDelegatedKeys(t),
 	})
 	defer server.Close()
 
