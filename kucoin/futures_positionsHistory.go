@@ -87,7 +87,7 @@ func (s *futures_positionsHistory) Do(ctx context.Context, opts ...utils.Request
 		return res, err
 	}
 
-	return s.convert.convertPositionsHistory(answ.Result.Items), nil
+	return s.convert.convertPositionsHistory(dropInverse(answ.Result.Items, func(p futures_PositionsHistory_Response) string { return p.Symbol })), nil
 }
 
 type futures_PositionsHistory_Response struct {

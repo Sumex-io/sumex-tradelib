@@ -76,4 +76,5 @@ type futures_instrumentsInfo struct {
 	IndexPriceTickSize float64 `json:"indexPriceTickSize"`
 	MaxLeverage        int64   `json:"maxLeverage"`
 	EnableTrading      bool    `json:"enableTrading"`
+	IsInverse          bool    `json:"isInverse"`
 }

@@ -54,7 +54,7 @@ func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOpt
 		return res, err
 	}
 
-	out := s.convert.convertOrdersHistory(normalItems)
+	out := s.convert.convertOrdersHistory(dropInverse(normalItems, func(o futures_ordersHistory_Response) string { return o.Symbol }))
 
 	// ------------------------------------------------
 	// 2) Done stop orders для разметки TP/SL

@@ -34,7 +34,7 @@ func (s *futures_getPositions) Do(ctx context.Context, opts ...utils.RequestOpti
 	if err != nil {
 		return res, err
 	}
-	return s.convert.convertPositions(answ.Result), nil
+	return s.convert.convertPositions(dropInverse(answ.Result, func(p futures_Position) string { return p.Symbol })), nil
 }
 
 type futures_Position struct {
