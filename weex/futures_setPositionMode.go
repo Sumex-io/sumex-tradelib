@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/Sumex-io/sumex-tradelib/entity"
 	"github.com/Sumex-io/sumex-tradelib/utils"
@@ -46,31 +45,26 @@ func (s *futures_setPositionMode) Do(ctx context.Context, opts ...utils.RequestO
 
 	r := &utils.Request{
 		Method:   http.MethodPost,
-		Endpoint: "/capi/v2/account/position/changeHoldModel",
+		Endpoint: "/capi/v3/account/marginType",
 		SecType:  utils.SecTypeSigned,
 	}
 
-	v2symbol := strings.ToLower(*s.symbol)
-	if !strings.HasPrefix(v2symbol, "cmt_") {
-		v2symbol = "cmt_" + v2symbol
-	}
-
 	m := utils.Params{
-		"symbol": v2symbol,
+		"symbol": *s.symbol,
 	}
 
 	if *s.marginMode == entity.MarginModeTypeCross {
-		m["marginMode"] = 1
+		m["marginType"] = "CROSSED"
 	} else if *s.marginMode == entity.MarginModeTypeIsolated {
-		m["marginMode"] = 3
+		m["marginType"] = "ISOLATED"
 	} else {
 		return res, errors.New("unsupported margin mode")
 	}
 
 	if *s.mode == entity.PositionModeTypeOneWay {
-		m["separatedMode"] = 1
+		m["separatedType"] = "COMBINED"
 	} else if *s.mode == entity.PositionModeTypeHedge {
-		m["separatedMode"] = 2
+		m["separatedType"] = "SEPARATED"
 	} else {
 		return res, errors.New("unsupported position mode")
 	}
