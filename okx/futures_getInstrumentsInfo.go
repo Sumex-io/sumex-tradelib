@@ -56,6 +56,7 @@ func (s *futures_getInstrumentsInfo) Do(ctx context.Context, opts ...utils.Reque
 type futures_instrumentsInfo struct {
 	InstId    string `json:"instId"`
 	CtMult    string `json:"ctMult"`
+	CtType    string `json:"ctType"`
 	CtVal     string `json:"ctVal"`
 	CtValCcy  string `json:"ctValCcy"`
 	SettleCcy string `json:"settleCcy"`

@@ -21,6 +21,7 @@ func (s *futures_getPositions) Do(ctx context.Context, opts ...utils.RequestOpti
 		Endpoint: "/api/v5/account/positions",
 		SecType:  utils.SecTypeSigned,
 	}
+	r.SetParams(utils.Params{"instType": "SWAP"})
 
 	data, _, err := s.callAPI(ctx, r, opts...)
 	if err != nil {
@@ -35,7 +36,7 @@ func (s *futures_getPositions) Do(ctx context.Context, opts ...utils.RequestOpti
 	if err != nil {
 		return res, err
 	}
-	return s.convert.convertPositions(answ.Result), nil
+	return s.convert.convertPositions(dropInverse(answ.Result, func(p futures_Position) string { return p.InstID })), nil
 }
 
 type futures_Position struct {

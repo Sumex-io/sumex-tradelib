@@ -103,6 +103,7 @@ func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOpt
 		return res, err
 	}
 
+	answ1.Result = dropInverse(answ1.Result, func(o futures_ordersHistory_Response) string { return o.InstId })
 	out := convertOrdersHistoryOKX(answ1.Result)
 
 	// -----------------------------------------
@@ -147,7 +148,7 @@ func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOpt
 		return res, err
 	}
 
-	algoOut := convertAlgoOrdersHistoryOKX(answ2.Result)
+	algoOut := convertAlgoOrdersHistoryOKX(dropInverse(answ2.Result, func(o futures_algoOrderHistory) string { return o.InstId }))
 
 	// -----------------------------------------
 	// 3) Merge:

@@ -148,6 +148,9 @@ func (c *futures_converts) convertInstrumentsInfo(in []futures_instrumentsInfo) 
 		return out
 	}
 	for _, item := range in {
+		if item.CtType == "inverse" {
+			continue
+		}
 		out = append(out, entity.Futures_InstrumentsInfo{
 			Symbol:         item.InstId,
 			Base:           item.CtValCcy,
