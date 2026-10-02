@@ -275,6 +275,7 @@ func (c *futures_converts) convertPositionsHistory(in []futures_PositionsHistory
 			CreateTime:    utils.StringToInt64(item.CreatedTime),
 			UpdateTime:    utils.StringToInt64(item.UpdatedTime),
 			IsLiquidation: item.ExecType == "BustTrade",
+			IsAdl:         item.ExecType == "AdlTrade",
 		})
 	}
 	return out

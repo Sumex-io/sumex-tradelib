@@ -70,6 +70,7 @@ type Futures_PositionsHistory struct {
 	CreateTime          int64  `json:"createTime" bson:"createTime"`
 	UpdateTime          int64  `json:"updateTime" bson:"updateTime"`
 	IsLiquidation       bool   `json:"isLiquidation,omitempty" bson:"isLiquidation,omitempty"`
+	IsAdl               bool   `json:"isAdl,omitempty" bson:"isAdl,omitempty"`
 }
 
 type Futures_OrdersHistory struct {
