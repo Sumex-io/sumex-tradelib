@@ -3,9 +3,9 @@ package weex
 import (
 	"context"
 	"encoding/json"
+	"math/big"
 	"net/http"
 	"sort"
-	"strings"
 
 	"github.com/Sumex-io/sumex-tradelib/entity"
 	"github.com/Sumex-io/sumex-tradelib/utils"
@@ -110,26 +110,19 @@ func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOpt
 		}
 
 		res = append(res, s.convert.convertOrdersHistory(answ)...)
+		s.attachFills(ctx, res, opts...)
 	}
 
-	if s.symbol != nil && *s.symbol != "" {
+	{
 		r := &utils.Request{
 			Method:   http.MethodGet,
-			Endpoint: "/capi/v2/order/historyPlan",
+			Endpoint: "/capi/v3/allAlgoOrders",
 			SecType:  utils.SecTypeSigned,
 		}
 
-		v2symbol := strings.ToLower(*s.symbol)
-		if !strings.HasPrefix(v2symbol, "cmt_") {
-			v2symbol = "cmt_" + v2symbol
-		}
-
-		m := utils.Params{
-			"symbol": v2symbol,
-		}
-
-		if s.limit != nil && *s.limit > 0 {
-			m["pageSize"] = *s.limit
+		m := utils.Params{"limit": s.pageLimit()}
+		if s.symbol != nil && *s.symbol != "" {
+			m["symbol"] = *s.symbol
 		}
 		if s.startTime != nil {
 			m["startTime"] = *s.startTime
@@ -145,12 +138,29 @@ func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOpt
 			return res, e
 		}
 
-		var answ futures_algoOrdersHistoryPage
+		var answ struct {
+			Orders []futures_algoOrder `json:"orders"`
+		}
 		if e := json.Unmarshal(data, &answ); e != nil {
 			return res, e
 		}
 
-		res = append(res, s.convert.convertAlgoOrdersHistory(answ.List)...)
+		executed := make(map[string]entity.Futures_OrdersHistory, len(res))
+		var oldest int64
+		for _, order := range res {
+			executed[order.OrderID] = order
+			if oldest == 0 || order.CreateTime < oldest {
+				oldest = order.CreateTime
+			}
+		}
+
+		for _, order := range s.convert.convertAlgoOrdersHistory(answ.Orders, executed) {
+			// Past a full orders page the caller pages by the oldest createTime, so older rows would skip orders.
+			if int64(len(res)) >= s.pageLimit() && order.CreateTime < oldest {
+				continue
+			}
+			res = append(res, order)
+		}
 	}
 
 	if s.orderID != nil && *s.orderID != "" {
@@ -186,30 +196,52 @@ type futures_ordersHistory_Response struct {
 	Time          int64  `json:"time"`
 	UpdateTime    int64  `json:"updateTime"`
 	TimeInForce   string `json:"timeInForce"`
+	ReduceOnly    bool   `json:"reduceOnly"`
 }
 
-type futures_algoOrdersHistoryPage struct {
-	List     []futures_algoOrdersHistoryItem `json:"list"`
-	NextPage bool                            `json:"nextPage"`
-}
+// WeEx orders carry no fee or PnL, so both are summed from the account fills; without fills the order stays as served.
+func (s *futures_ordersHistory) attachFills(ctx context.Context, orders []entity.Futures_OrdersHistory, opts ...utils.RequestOption) {
+	var from, to int64
+	for _, order := range orders {
+		if from == 0 || order.CreateTime < from {
+			from = order.CreateTime
+		}
+		if order.UpdateTime > to {
+			to = order.UpdateTime
+		}
+	}
+	if from == 0 || to < from {
+		return
+	}
 
-type futures_algoOrdersHistoryItem struct {
-	Symbol                string `json:"symbol"`
-	Size                  string `json:"size"`
-	ClientOID             string `json:"client_oid"`
-	CreateTime            string `json:"createTime"`
-	FilledQty             string `json:"filled_qty"`
-	Fee                   string `json:"fee"`
-	OrderID               string `json:"order_id"`
-	Price                 string `json:"price"`
-	PriceAvg              string `json:"price_avg"`
-	Status                string `json:"status"`
-	Type                  string `json:"type"`
-	OrderType             string `json:"order_type"`
-	TotalProfits          string `json:"totalProfits"`
-	TriggerPrice          string `json:"triggerPrice"`
-	TriggerPriceType      string `json:"triggerPriceType"`
-	TriggerTime           string `json:"triggerTime"`
-	PresetTakeProfitPrice string `json:"presetTakeProfitPrice"`
-	PresetStopLossPrice   string `json:"presetStopLossPrice"`
+	fills, err := (&futures_positionsHistory{callAPI: s.callAPI, convert: s.convert, symbol: s.symbol}).fetchFills(ctx, from, to, opts...)
+	if err != nil {
+		return
+	}
+
+	type orderFills struct {
+		fee, profit *big.Rat
+		feeAsset    string
+	}
+	byOrder := make(map[string]*orderFills)
+	for _, fill := range fills {
+		sum := byOrder[fill.OrderID]
+		if sum == nil {
+			sum = &orderFills{fee: new(big.Rat), profit: new(big.Rat)}
+			byOrder[fill.OrderID] = sum
+		}
+		sum.fee.Add(sum.fee, weexDecimal(fill.Commission))
+		sum.profit.Add(sum.profit, weexDecimal(fill.RealisedProfit))
+		sum.feeAsset = fill.CommissionAsset
+	}
+
+	for i := range orders {
+		sum, ok := byOrder[orders[i].OrderID]
+		if !ok {
+			continue
+		}
+		orders[i].Fee = weexDecimalString(new(big.Rat).Neg(sum.fee))
+		orders[i].FeeAsset = sum.feeAsset
+		orders[i].RealisedProfit = weexDecimalString(sum.profit)
+	}
 }
