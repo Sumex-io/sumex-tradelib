@@ -342,7 +342,6 @@ func (c *futures_converts) convertOrdersHistory(answ []futures_ordersHistory_Res
 			ExecutedSize:  utils.Int64ToString(item.Size),
 			Price:         item.Price,
 			ExecutedPrice: item.Fill_price,
-			Fee:           "",
 			// Leverage:      item.Lever,
 			// Type:       "LIMIT",
 			Status:     strings.ToUpper(item.Status),

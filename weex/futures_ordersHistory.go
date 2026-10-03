@@ -74,6 +74,7 @@ func (s *futures_ordersHistory) pageLimit() int64 {
 }
 
 func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOption) (res []entity.Futures_OrdersHistory, err error) {
+	var isFullPage bool
 	{
 		r := &utils.Request{
 			Method:   http.MethodGet,
@@ -109,6 +110,7 @@ func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOpt
 			return res, e
 		}
 
+		isFullPage = int64(len(answ)) >= s.pageLimit()
 		res = append(res, s.convert.convertOrdersHistory(answ)...)
 		s.attachFills(ctx, res, opts...)
 	}
@@ -156,7 +158,7 @@ func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOpt
 
 		for _, order := range s.convert.convertAlgoOrdersHistory(answ.Orders, executed) {
 			// Past a full orders page the caller pages by the oldest createTime, so older rows would skip orders.
-			if int64(len(res)) >= s.pageLimit() && order.CreateTime < oldest {
+			if isFullPage && order.CreateTime < oldest {
 				continue
 			}
 			res = append(res, order)
