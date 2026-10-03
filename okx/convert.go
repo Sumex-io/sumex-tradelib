@@ -326,6 +326,7 @@ func (c *futures_converts) convertPositions(answ []futures_Position) (res []enti
 			PositionID:       item.PosID,
 			EntryPrice:       item.AvgPx,
 			MarkPrice:        item.MarkPx,
+			LiquidationPrice: item.LiqPx,
 			UnRealizedProfit: item.Upl,
 			RealizedProfit:   item.RealizedPnl,
 			Notional:         item.NotionalUsd,

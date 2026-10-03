@@ -3,7 +3,9 @@ package weex
 import (
 	"context"
 	"encoding/json"
+	"math/big"
 	"net/http"
+	"strconv"
 
 	"github.com/Sumex-io/sumex-tradelib/entity"
 	"github.com/Sumex-io/sumex-tradelib/utils"
@@ -83,7 +85,9 @@ func (s *spot_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOption
 		return res, err
 	}
 
-	return s.convert.convertOrdersHistory(answ), nil
+	res = s.convert.convertOrdersHistory(answ)
+	s.attachFees(ctx, res, opts...)
+	return res, nil
 }
 
 type spot_ordersHistory_Response struct {
@@ -101,4 +105,61 @@ type spot_ordersHistory_Response struct {
 	Time                int64  `json:"time"`
 	UpdateTime          int64  `json:"updateTime"`
 	IsWorking           bool   `json:"isWorking"`
+}
+
+type spot_userTrade struct {
+	OrderID    int64  `json:"orderId"`
+	Commission string `json:"commission"`
+}
+
+// WeEx spot orders carry no fee, so it is summed from one page of the symbol's trades; without them the fee stays empty.
+func (s *spot_ordersHistory) attachFees(ctx context.Context, orders []entity.Spot_OrdersHistory, opts ...utils.RequestOption) {
+	if s.symbol == nil || *s.symbol == "" || len(orders) == 0 {
+		return
+	}
+
+	var from, to int64
+	for _, order := range orders {
+		if from == 0 || order.CreateTime < from {
+			from = order.CreateTime
+		}
+		if order.UpdateTime > to {
+			to = order.UpdateTime
+		}
+	}
+	if from == 0 || to < from {
+		return
+	}
+
+	r := &utils.Request{
+		Method:   http.MethodGet,
+		Endpoint: "/api/v3/myTrades",
+		SecType:  utils.SecTypeSigned,
+	}
+	r.SetParams(utils.Params{"symbol": *s.symbol, "startTime": from, "endTime": to, "limit": 200})
+
+	data, _, err := s.callAPI(ctx, r, opts...)
+	if err != nil {
+		return
+	}
+
+	var trades []spot_userTrade
+	if err := json.Unmarshal(data, &trades); err != nil {
+		return
+	}
+
+	fees := make(map[string]*big.Rat)
+	for _, trade := range trades {
+		id := strconv.FormatInt(trade.OrderID, 10)
+		if fees[id] == nil {
+			fees[id] = new(big.Rat)
+		}
+		fees[id].Add(fees[id], weexDecimal(trade.Commission))
+	}
+
+	for i := range orders {
+		if fee, ok := fees[orders[i].OrderID]; ok {
+			orders[i].Fee = weexDecimalString(fee)
+		}
+	}
 }

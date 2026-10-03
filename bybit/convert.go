@@ -373,9 +373,10 @@ func (c *futures_converts) convertPositions(answ []futures_Position) (res []enti
 			Symbol:       item.Symbol,
 			PositionSide: positionSide,
 			// PositionID:   item.PositionId,
-			PositionSize: item.Size,
-			EntryPrice:   item.AvgPrice,
-			MarkPrice:    item.MarkPrice,
+			PositionSize:     item.Size,
+			EntryPrice:       item.AvgPrice,
+			MarkPrice:        item.MarkPrice,
+			LiquidationPrice: item.LiqPrice,
 			// InitialMargin:    item.Initial_margin,
 			UnRealizedProfit: item.UnrealisedPnl,
 			RealizedProfit:   item.CurRealisedPnl,
@@ -402,10 +403,13 @@ func (c *futures_converts) convertOrdersHistory(in futures_ordersHistory_Respons
 			continue
 		}
 
+		reduceOnly := item.ReduceOnly || item.CloseOnTrigger
+
 		positionSide := ""
 		switch item.PositionIdx {
 		case 0:
-			if strings.ToUpper(item.Side) == "BUY" {
+			// A one-way reduce-only order closes the position on the opposite side.
+			if (strings.ToUpper(item.Side) == "BUY") != reduceOnly {
 				positionSide = "LONG"
 			} else {
 				positionSide = "SHORT"
@@ -459,10 +463,12 @@ func (c *futures_converts) convertOrdersHistory(in futures_ordersHistory_Respons
 			FeeAsset:      coin,
 			Type:          strings.ToUpper(item.OrderType),
 			Status:        status,
+			HedgeMode:     item.PositionIdx != 0,
 			CreateTime:    utils.StringToInt64(item.CreatedTime),
 			UpdateTime:    utils.StringToInt64(item.UpdatedTime),
 			TpOrder:       istp,
 			SlOrder:       issl,
+			ReduceOnly:    reduceOnly,
 			// Cursor:      in.NextPageCursor,
 		})
 	}
