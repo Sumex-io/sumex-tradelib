@@ -81,7 +81,7 @@ func (s *futures_getOrderList) Do(ctx context.Context, opts ...utils.RequestOpti
 		merged = append(merged, it)
 	}
 
-	return s.convert.convertOrderList(merged), nil
+	return s.convert.convertOrderList(dropInverse(merged, func(o futures_orderList) string { return o.Symbol })), nil
 }
 
 // ---------------- internal fetchers ----------------

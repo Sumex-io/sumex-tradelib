@@ -82,7 +82,7 @@ func (s *futures_getOrderList) Do(ctx context.Context, opts ...utils.RequestOpti
 			return res, e
 		}
 
-		res = append(res, s.convert.convertOrderList(answ.Result)...)
+		res = append(res, s.convert.convertOrderList(dropInverse(answ.Result, func(o futures_orderList) string { return o.InstId }))...)
 	}
 
 	// 2) algo pending (TP/SL conditional), которые создавались через /trade/order-algo
@@ -124,7 +124,7 @@ func (s *futures_getOrderList) Do(ctx context.Context, opts ...utils.RequestOpti
 			return res, e
 		}
 
-		res = append(res, s.convert.convertAlgoOrderList(answ.Result)...)
+		res = append(res, s.convert.convertAlgoOrderList(dropInverse(answ.Result, func(o futures_algoOrder) string { return o.InstId }))...)
 	}
 
 	return res, nil

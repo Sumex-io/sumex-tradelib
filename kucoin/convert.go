@@ -180,6 +180,9 @@ func (c *futures_converts) convertInstrumentsInfo(in []futures_instrumentsInfo) 
 		return out
 	}
 	for _, item := range in {
+		if item.IsInverse {
+			continue
+		}
 		state := "LIVE"
 		if strings.ToUpper(item.Status) != "OPEN" {
 			state = strings.ToUpper(item.Status)
