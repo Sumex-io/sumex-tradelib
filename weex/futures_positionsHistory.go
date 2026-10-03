@@ -2,6 +2,7 @@ package weex
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"sort"
 	"time"
@@ -14,6 +15,8 @@ const (
 	weexUserTradesPageLimit = 100
 	weexUserTradesMaxPages  = 20
 	weexUserTradesWindowMs  = int64(7 * 24 * time.Hour / time.Millisecond)
+	weexIncomeMaxRangeMs    = int64(100 * 24 * time.Hour / time.Millisecond)
+	weexLiquidationMatchMs  = int64(time.Minute / time.Millisecond)
 )
 
 type futures_positionsHistory struct {
@@ -100,7 +103,63 @@ func (s *futures_positionsHistory) Do(ctx context.Context, opts ...utils.Request
 		out = out[from:to]
 	}
 
+	s.markLiquidations(ctx, out, start, end, opts...)
+
 	return out, nil
+}
+
+// Fills carry no liquidation marker, so closes are matched to the account's liquidation bills; best effort.
+func (s *futures_positionsHistory) markLiquidations(ctx context.Context, out []entity.Futures_PositionsHistory, start, end int64, opts ...utils.RequestOption) {
+	if len(out) == 0 {
+		return
+	}
+	if end-start > weexIncomeMaxRangeMs {
+		start = end - weexIncomeMaxRangeMs
+	}
+
+	billTimes := make(map[string][]int64)
+	for _, incomeType := range []string{"start_liquidate", "finish_liquidate"} {
+		m := utils.Params{"incomeType": incomeType, "startTime": start, "endTime": end, "limit": 100}
+		if s.symbol != nil && *s.symbol != "" {
+			m["symbol"] = *s.symbol
+		}
+
+		r := &utils.Request{
+			Method:   http.MethodPost,
+			Endpoint: "/capi/v3/account/income",
+			SecType:  utils.SecTypeSigned,
+		}
+		r.SetFormParams(m)
+
+		data, _, err := s.callAPI(ctx, r, opts...)
+		if err != nil {
+			continue
+		}
+
+		var answ futures_income_Response
+		if err := json.Unmarshal(data, &answ); err != nil {
+			continue
+		}
+		for _, item := range answ.Items {
+			billTimes[item.Symbol] = append(billTimes[item.Symbol], item.Time)
+		}
+	}
+
+	for i := range out {
+		for _, billTime := range billTimes[out[i].Symbol] {
+			if billTime-out[i].UpdateTime <= weexLiquidationMatchMs && out[i].UpdateTime-billTime <= weexLiquidationMatchMs {
+				out[i].IsLiquidation = true
+				break
+			}
+		}
+	}
+}
+
+type futures_income_Response struct {
+	Items []struct {
+		Symbol string `json:"symbol"`
+		Time   int64  `json:"time"`
+	} `json:"items"`
 }
 
 // fetchFills walks the range in the 7-day windows /capi/v3/userTrades accepts.
