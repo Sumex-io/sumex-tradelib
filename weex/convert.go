@@ -148,12 +148,11 @@ func (c *futures_converts) convertInstrumentsInfo(in []futures_instrumentsInfo) 
 			Quote:          item.QuoteAsset,
 			MinQty:         item.MinOrderSize.String(),
 			PricePrecision: strconv.Itoa(item.PricePrecision),
-			SizePrecision:  utils.GetPrecisionFromStr(item.MinOrderSize.String()),
-			// SizePrecision:  strconv.Itoa(item.QuantityPrecision),
+			SizePrecision:  strconv.Itoa(max(item.QuantityPrecision, 0)),
 			MaxLeverage:    strconv.Itoa(item.MaxLeverage),
 			State:          strings.ToUpper("LIVE"),
 			IsSizeContract: false,
-			// Multiplier:     "1",
+			Multiplier:     item.ContractVal.String(),
 			// ContractSize:   item.ContractVal.String(),
 		})
 	}
