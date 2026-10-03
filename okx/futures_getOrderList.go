@@ -148,6 +148,7 @@ type futures_orderList struct {
 	State          string                             `json:"state"`
 	FillSz         string                             `json:"fillSz"`
 	IsTpLimit      string                             `json:"isTpLimit"`
+	ReduceOnly     string                             `json:"reduceOnly"`
 	UTime          string                             `json:"uTime"`
 	CTime          string                             `json:"cTime"`
 }

@@ -86,12 +86,16 @@ func (c *spot_converts) convertOrdersHistory(in []spot_ordersHistory_Response) (
 	}
 
 	for _, item := range in {
+		size := item.Sz
+		if isQuoteSizedMarketOrder(item) {
+			size = item.AccFillSz
+		}
 		out = append(out, entity.Spot_OrdersHistory{
 			Symbol:        item.InstId,
 			OrderID:       item.OrdId,
 			ClientOrderID: item.ClOrdId,
 			Side:          strings.ToUpper(item.Side),
-			Size:          item.Sz,
+			Size:          size,
 			Price:         item.Px,
 			ExecutedSize:  item.AccFillSz,
 			ExecutedPrice: item.AvgPx,
@@ -104,6 +108,13 @@ func (c *spot_converts) convertOrdersHistory(in []spot_ordersHistory_Response) (
 		})
 	}
 	return out
+}
+
+func isQuoteSizedMarketOrder(item spot_ordersHistory_Response) bool {
+	if item.TgtCcy != "" {
+		return item.TgtCcy == "quote_ccy"
+	}
+	return item.OrdType == "market" && item.Side == "buy"
 }
 
 func (c *spot_converts) convertPlaceOrder(in []placeOrder_Response) (out []entity.PlaceOrder) {
@@ -194,12 +205,8 @@ func (c *futures_converts) convertLeverage(in []futures_leverage) (out entity.Fu
 		out.ShortLeverage = in[0].Lever
 	} else if len(in) == 2 {
 		out.Symbol = in[0].InstId
-		if in[0].Lever == in[1].Lever {
+		if utils.StringToFloat(in[0].Lever) == utils.StringToFloat(in[1].Lever) {
 			out.Leverage = in[0].Lever
-		} else if utils.StringToInt64(in[0].Lever) < utils.StringToInt64(in[1].Lever) {
-			out.Leverage = in[0].Lever
-		} else {
-			out.Leverage = in[1].Lever
 		}
 		for _, item := range in {
 			switch strings.ToUpper(item.PosSide) {
@@ -234,10 +241,6 @@ func (c *futures_converts) convertPositionsHistory(in []futures_PositionsHistory
 	}
 
 	for _, item := range in {
-
-		if item.Type == "1" || item.Type == "5" {
-			continue
-		}
 		mMode := string(entity.MarginModeTypeCross)
 		if item.MgnMode != "cross" {
 			mMode = string(entity.MarginModeTypeIsolated)
@@ -270,9 +273,7 @@ func (c *futures_converts) convertOrderList(answ []futures_orderList) (res []ent
 	for _, item := range answ {
 		positionSide := "LONG"
 		if item.PosSide == "net" {
-			if strings.ToUpper(item.Side) == "SELL" {
-				positionSide = "SHORT"
-			}
+			positionSide = netPositionSide(item.Side, item.ReduceOnly == "true")
 		} else {
 			positionSide = strings.ToUpper(item.PosSide)
 		}
@@ -299,6 +300,15 @@ func (c *futures_converts) convertOrderList(answ []futures_orderList) (res []ent
 		})
 	}
 	return res
+}
+
+// netPositionSide: in one-way mode a closing order sits on the side opposite to its own.
+func netPositionSide(side string, isClosing bool) string {
+	isSell := strings.ToUpper(side) == "SELL"
+	if isSell != isClosing {
+		return "SHORT"
+	}
+	return "LONG"
 }
 
 func (c *futures_converts) convertPositions(answ []futures_Position) (res []entity.Futures_Positions) {
