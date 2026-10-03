@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/Sumex-io/sumex-tradelib/entity"
 	"github.com/Sumex-io/sumex-tradelib/utils"
@@ -114,7 +115,9 @@ func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOpt
 		return res, err
 	}
 
-	return s.convert.convertOrdersHistory(answ.Result), nil
+	res = s.convert.convertOrdersHistory(answ.Result)
+	s.attachLeverage(ctx, res, opts...)
+	return res, nil
 }
 
 type futures_ordersHistory_Response struct {
@@ -139,4 +142,90 @@ type futures_ordersHistory_Response struct {
 		UpdatedTime   string            `json:"updatedTime"`
 	} `json:"list"`
 	NextPageCursor string `json:"nextPageCursor"`
+}
+
+const (
+	closedPnlWindow      = 7 * 24 * time.Hour
+	closedPnlMaxRequests = 5
+)
+
+// Order history carries no leverage; closing orders take the position leverage from their closed-pnl record.
+func (s *futures_ordersHistory) attachLeverage(ctx context.Context, orders []entity.Futures_OrdersHistory, opts ...utils.RequestOption) {
+	var from, to int64
+	for _, order := range orders {
+		if from == 0 || order.CreateTime < from {
+			from = order.CreateTime
+		}
+		if order.UpdateTime > to {
+			to = order.UpdateTime
+		}
+	}
+	if from == 0 || to < from {
+		return
+	}
+
+	leverage := make(map[string]string)
+	requests := 0
+	for end := to; end >= from && requests < closedPnlMaxRequests; end -= closedPnlWindow.Milliseconds() {
+		start := max(end-closedPnlWindow.Milliseconds()+1, from)
+		cursor := ""
+		for requests < closedPnlMaxRequests {
+			requests++
+			page, next, err := s.fetchClosedPnl(ctx, start, end, cursor, opts...)
+			if err != nil {
+				return
+			}
+			for _, item := range page {
+				if item.Leverage != "" {
+					leverage[item.OrderId] = item.Leverage
+				}
+			}
+			if next == "" || next == cursor || len(page) == 0 {
+				break
+			}
+			cursor = next
+		}
+	}
+
+	for i := range orders {
+		if orders[i].Leverage == "" {
+			orders[i].Leverage = leverage[orders[i].OrderID]
+		}
+	}
+}
+
+func (s *futures_ordersHistory) fetchClosedPnl(ctx context.Context, start, end int64, cursor string, opts ...utils.RequestOption) ([]futures_PositionsHistory_Response, string, error) {
+	r := &utils.Request{
+		Method:   http.MethodGet,
+		Endpoint: "/v5/position/closed-pnl",
+		SecType:  utils.SecTypeSigned,
+	}
+
+	m := utils.Params{"category": "linear", "limit": 100, "startTime": start, "endTime": end}
+	if s.category != nil {
+		m["category"] = *s.category
+	}
+	if s.symbol != nil {
+		m["symbol"] = *s.symbol
+	}
+	if cursor != "" {
+		m["cursor"] = cursor
+	}
+	r.SetParams(m)
+
+	data, _, err := s.callAPI(ctx, r, opts...)
+	if err != nil {
+		return nil, "", err
+	}
+
+	var answ struct {
+		Result struct {
+			List           []futures_PositionsHistory_Response `json:"list"`
+			NextPageCursor string                              `json:"nextPageCursor"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(data, &answ); err != nil {
+		return nil, "", err
+	}
+	return answ.Result.List, answ.Result.NextPageCursor, nil
 }
