@@ -11,8 +11,7 @@ import (
 	"github.com/Sumex-io/sumex-tradelib/utils"
 )
 
-// WeEx caps `limit` on GET /capi/v3/order/history at 1..100 since 2026-09-14 (was 1..1000);
-// the request weight scales with the page size.
+// WeEx caps order/history `limit` at 100 since 2026-09-14; the request weight scales with it.
 const (
 	futuresOrdersHistoryDefaultLimit int64 = 100
 	futuresOrdersHistoryMaxLimit     int64 = 100
