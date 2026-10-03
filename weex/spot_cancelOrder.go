@@ -36,8 +36,8 @@ func (s *spot_cancelOrder) ClientOrderID(clientOrderID string) *spot_cancelOrder
 
 func (s *spot_cancelOrder) Do(ctx context.Context, opts ...utils.RequestOption) (res []entity.PlaceOrder, err error) {
 	r := &utils.Request{
-		Method:   http.MethodPost,
-		Endpoint: "/api/v2/trade/cancel-order",
+		Method:   http.MethodDelete,
+		Endpoint: "/api/v3/order",
 		SecType:  utils.SecTypeSigned,
 	}
 
@@ -52,10 +52,10 @@ func (s *spot_cancelOrder) Do(ctx context.Context, opts ...utils.RequestOption) 
 	}
 
 	if s.clientOrderID != nil {
-		m["clientOid"] = *s.clientOrderID
+		m["origClientOrderId"] = *s.clientOrderID
 	}
 
-	r.SetFormParams(m)
+	r.SetParams(m)
 
 	data, _, err := s.callAPI(ctx, r, opts...)
 	if err != nil {
@@ -63,9 +63,7 @@ func (s *spot_cancelOrder) Do(ctx context.Context, opts ...utils.RequestOption) 
 	}
 
 	var answ struct {
-		Code string               `json:"code"`
-		Msg  string               `json:"msg"`
-		Data cancelOrder_Response `json:"data"`
+		OrderId json.Number `json:"orderId"`
 	}
 
 	err = json.Unmarshal(data, &answ)
@@ -73,28 +71,19 @@ func (s *spot_cancelOrder) Do(ctx context.Context, opts ...utils.RequestOption) 
 		return res, err
 	}
 
-	if answ.Code != "00000" && answ.Code != "" {
-		if answ.Msg != "" {
-			return res, errors.New(answ.Msg)
-		}
+	if answ.OrderId == "" {
 		return res, errors.New("cancel order failed")
 	}
 
-	if !answ.Data.Result {
-		if answ.Data.ErrMsg != "" {
-			return res, errors.New(answ.Data.ErrMsg)
-		}
-		return res, errors.New("cancel order failed")
+	out := cancelOrder_Response{OrderID: answ.OrderId.String()}
+	if s.clientOrderID != nil {
+		out.ClientOrderID = *s.clientOrderID
 	}
 
-	return s.convert.convertCancelOrder(answ.Data), nil
+	return s.convert.convertCancelOrder(out), nil
 }
 
 type cancelOrder_Response struct {
-	OrderID       string `json:"order_id"`
-	ClientOrderID string `json:"client_oid"`
-	Symbol        string `json:"symbol"`
-	Result        bool   `json:"result"`
-	ErrCode       string `json:"err_code"`
-	ErrMsg        string `json:"err_msg"`
+	OrderID       string
+	ClientOrderID string
 }
