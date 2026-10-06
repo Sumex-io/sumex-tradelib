@@ -79,6 +79,7 @@ type futures_Position struct {
 	UnrealisedPnl  string `json:"unrealisedPnl"`
 	CurRealisedPnl string `json:"curRealisedPnl"`
 	PositionValue  string `json:"positionValue"`
+	PositionIM     string `json:"positionIM"`
 
 	CreatedTime string `json:"createdTime"`
 	UpdatedTime string `json:"updatedTime"`

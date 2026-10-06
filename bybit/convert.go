@@ -381,6 +381,7 @@ func (c *futures_converts) convertPositions(answ []futures_Position) (res []enti
 			UnRealizedProfit: item.UnrealisedPnl,
 			RealizedProfit:   item.CurRealisedPnl,
 			Notional:         item.PositionValue,
+			Margin:           item.PositionIM,
 			// MarginRatio:      item.Maintenance_rate,
 			Leverage:   item.Leverage,
 			MarginMode: marginMode,
