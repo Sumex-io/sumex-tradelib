@@ -3,7 +3,6 @@ package weex
 import (
 	"context"
 	"encoding/json"
-	"math/big"
 	"net/http"
 	"sort"
 
@@ -112,7 +111,6 @@ func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOpt
 
 		isFullPage = int64(len(answ)) >= s.pageLimit()
 		res = append(res, s.convert.convertOrdersHistory(answ)...)
-		s.attachFills(ctx, res, opts...)
 	}
 
 	{
@@ -199,51 +197,4 @@ type futures_ordersHistory_Response struct {
 	UpdateTime    int64  `json:"updateTime"`
 	TimeInForce   string `json:"timeInForce"`
 	ReduceOnly    bool   `json:"reduceOnly"`
-}
-
-// WeEx orders carry no fee or PnL, so both are summed from the account fills; without fills the order stays as served.
-func (s *futures_ordersHistory) attachFills(ctx context.Context, orders []entity.Futures_OrdersHistory, opts ...utils.RequestOption) {
-	var from, to int64
-	for _, order := range orders {
-		if from == 0 || order.CreateTime < from {
-			from = order.CreateTime
-		}
-		if order.UpdateTime > to {
-			to = order.UpdateTime
-		}
-	}
-	if from == 0 || to < from {
-		return
-	}
-
-	fills, err := (&futures_positionsHistory{callAPI: s.callAPI, convert: s.convert, symbol: s.symbol}).fetchFills(ctx, from, to, opts...)
-	if err != nil {
-		return
-	}
-
-	type orderFills struct {
-		fee, profit *big.Rat
-		feeAsset    string
-	}
-	byOrder := make(map[string]*orderFills)
-	for _, fill := range fills {
-		sum := byOrder[fill.OrderID]
-		if sum == nil {
-			sum = &orderFills{fee: new(big.Rat), profit: new(big.Rat)}
-			byOrder[fill.OrderID] = sum
-		}
-		sum.fee.Add(sum.fee, weexDecimal(fill.Commission))
-		sum.profit.Add(sum.profit, weexDecimal(fill.RealisedProfit))
-		sum.feeAsset = fill.CommissionAsset
-	}
-
-	for i := range orders {
-		sum, ok := byOrder[orders[i].OrderID]
-		if !ok {
-			continue
-		}
-		orders[i].Fee = weexDecimalString(new(big.Rat).Neg(sum.fee))
-		orders[i].FeeAsset = sum.feeAsset
-		orders[i].RealisedProfit = weexDecimalString(sum.profit)
-	}
 }

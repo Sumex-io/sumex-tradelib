@@ -213,7 +213,7 @@ func (c *futures_converts) convertPositions(answ []futures_Position) (res []enti
 			MarkPrice:        "",
 			LiquidationPrice: item.LiquidatePrice,
 			UnRealizedProfit: item.UnrealizePnl,
-			RealizedProfit:   weexPositionRealisedProfit(item),
+			RealizedProfit:   "",
 			Notional:         item.OpenValue,
 			Margin:           weexPositionMargin(item),
 			// HedgeMode:        hedgeMode,
@@ -231,22 +231,6 @@ func weexPositionMargin(item futures_Position) string {
 		return item.IsolatedMargin
 	}
 	return item.MarginSize
-}
-
-// WeEx realised PnL: closed PnL less every fee paid, funding included (positive = paid).
-func weexPositionRealisedProfit(item futures_Position) string {
-	profit := new(big.Rat)
-	if openSize := weexDecimal(item.CumOpenSize); openSize.Sign() != 0 {
-		entryValue := new(big.Rat).Mul(weexDecimal(item.CumCloseSize), new(big.Rat).Quo(weexDecimal(item.CumOpenValue), openSize))
-		profit.Sub(weexDecimal(item.CumCloseValue), entryValue)
-		if strings.EqualFold(item.Side, "SHORT") {
-			profit.Neg(profit)
-		}
-	}
-	for _, fee := range []string{item.CumOpenFee, item.CumCloseFee, item.CumFundingFee, item.CumLiquidateFee} {
-		profit.Sub(profit, weexDecimal(fee))
-	}
-	return weexDecimalString(profit)
 }
 
 func calcWeexPositionEntryPrice(item futures_Position) string {
