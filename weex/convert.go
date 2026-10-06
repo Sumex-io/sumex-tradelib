@@ -50,7 +50,7 @@ func (c *spot_converts) convertBalance(in []spot_Balance) (out []entity.AssetsBa
 	for _, item := range in {
 		out = append(out, entity.AssetsBalance{
 			Asset:   item.Asset,
-			Balance: item.Free,
+			Balance: weexDecimalString(new(big.Rat).Add(weexDecimal(item.Free), weexDecimal(item.Locked))),
 			Locked:  item.Locked,
 		})
 	}
@@ -106,10 +106,10 @@ func (c *spot_converts) convertOrdersHistory(in []spot_ordersHistory_Response) (
 
 		executedPrice := item.Price
 
-		executedQty := utils.StringToFloat(item.ExecutedQty)
-		cumQuote := utils.StringToFloat(item.CummulativeQuoteQty)
-		if executedQty > 0 && cumQuote > 0 {
-			executedPrice = strconv.FormatFloat(cumQuote/executedQty, 'f', -1, 64)
+		executedQty := weexDecimal(item.ExecutedQty)
+		cumQuote := weexDecimal(item.CummulativeQuoteQty)
+		if executedQty.Sign() > 0 && cumQuote.Sign() > 0 {
+			executedPrice = weexDecimalString(new(big.Rat).Quo(cumQuote, executedQty))
 		}
 
 		out = append(out, entity.Spot_OrdersHistory{
