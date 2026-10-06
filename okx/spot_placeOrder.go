@@ -26,6 +26,13 @@ type spot_placeOrder struct {
 	tradeMode     *entity.MarginModeType
 	tpPrice       *string
 	slPrice       *string
+	sizeInBase    *bool
+}
+
+// SizeInBase marks a market order size as base currency; OKX otherwise reads a market buy size as quote.
+func (s *spot_placeOrder) SizeInBase(sizeInBase bool) *spot_placeOrder {
+	s.sizeInBase = &sizeInBase
+	return s
 }
 
 func (s *spot_placeOrder) TradeMode(tradeMode entity.MarginModeType) *spot_placeOrder {
@@ -115,6 +122,9 @@ func (s *spot_placeOrder) Do(ctx context.Context, opts ...utils.RequestOption) (
 
 	if s.orderType != nil {
 		m["ordType"] = strings.ToLower(string(*s.orderType))
+		if *s.orderType == entity.OrderTypeMarket && s.sizeInBase != nil && *s.sizeInBase {
+			m["tgtCcy"] = "base_ccy"
+		}
 	}
 
 	if s.clientOrderID != nil {
