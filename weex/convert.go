@@ -50,7 +50,7 @@ func (c *spot_converts) convertBalance(in []spot_Balance) (out []entity.AssetsBa
 	for _, item := range in {
 		out = append(out, entity.AssetsBalance{
 			Asset:   item.Asset,
-			Balance: item.Free,
+			Balance: weexDecimalString(new(big.Rat).Add(weexDecimal(item.Free), weexDecimal(item.Locked))),
 			Locked:  item.Locked,
 		})
 	}
