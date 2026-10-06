@@ -11,11 +11,10 @@ import (
 	"github.com/Sumex-io/sumex-tradelib/utils"
 )
 
-// WeEx documents `limit` on GET /capi/v3/order/history as 1..1000 and applies a 500-record default
-// when it is omitted; from 2026-09-14 the request weight scales with the page size.
+// WeEx caps order/history `limit` at 100 since 2026-09-14; the request weight scales with it.
 const (
 	futuresOrdersHistoryDefaultLimit int64 = 100
-	futuresOrdersHistoryMaxLimit     int64 = 1000
+	futuresOrdersHistoryMaxLimit     int64 = 100
 )
 
 type futures_ordersHistory struct {
