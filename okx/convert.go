@@ -333,6 +333,11 @@ func (c *futures_converts) convertPositions(answ []futures_Position) (res []enti
 			hedgeMode = true
 
 		}
+		// OKX fills margin only for isolated positions and imr only for cross
+		margin := item.Imr
+		if item.MgnMode == "isolated" {
+			margin = item.Margin
+		}
 		res = append(res, entity.Futures_Positions{
 			Symbol:           item.InstID,
 			PositionSide:     positionSide,
@@ -341,9 +346,11 @@ func (c *futures_converts) convertPositions(answ []futures_Position) (res []enti
 			PositionID:       item.PosID,
 			EntryPrice:       item.AvgPx,
 			MarkPrice:        item.MarkPx,
+			LiquidationPrice: item.LiqPx,
 			UnRealizedProfit: item.Upl,
 			RealizedProfit:   item.RealizedPnl,
 			Notional:         item.NotionalUsd,
+			Margin:           margin,
 			HedgeMode:        hedgeMode,
 			MarginMode:       strings.ToUpper(item.MgnMode),
 			CreateTime:       utils.StringToInt64(item.CTime),

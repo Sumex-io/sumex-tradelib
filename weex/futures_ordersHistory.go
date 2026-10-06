@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"sort"
-	"strings"
 
 	"github.com/Sumex-io/sumex-tradelib/entity"
 	"github.com/Sumex-io/sumex-tradelib/utils"
@@ -73,6 +72,7 @@ func (s *futures_ordersHistory) pageLimit() int64 {
 }
 
 func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOption) (res []entity.Futures_OrdersHistory, err error) {
+	var isFullPage bool
 	{
 		r := &utils.Request{
 			Method:   http.MethodGet,
@@ -108,27 +108,20 @@ func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOpt
 			return res, e
 		}
 
+		isFullPage = int64(len(answ)) >= s.pageLimit()
 		res = append(res, s.convert.convertOrdersHistory(answ)...)
 	}
 
-	if s.symbol != nil && *s.symbol != "" {
+	{
 		r := &utils.Request{
 			Method:   http.MethodGet,
-			Endpoint: "/capi/v2/order/historyPlan",
+			Endpoint: "/capi/v3/allAlgoOrders",
 			SecType:  utils.SecTypeSigned,
 		}
 
-		v2symbol := strings.ToLower(*s.symbol)
-		if !strings.HasPrefix(v2symbol, "cmt_") {
-			v2symbol = "cmt_" + v2symbol
-		}
-
-		m := utils.Params{
-			"symbol": v2symbol,
-		}
-
-		if s.limit != nil && *s.limit > 0 {
-			m["pageSize"] = *s.limit
+		m := utils.Params{"limit": s.pageLimit()}
+		if s.symbol != nil && *s.symbol != "" {
+			m["symbol"] = *s.symbol
 		}
 		if s.startTime != nil {
 			m["startTime"] = *s.startTime
@@ -144,12 +137,29 @@ func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOpt
 			return res, e
 		}
 
-		var answ futures_algoOrdersHistoryPage
+		var answ struct {
+			Orders []futures_algoOrder `json:"orders"`
+		}
 		if e := json.Unmarshal(data, &answ); e != nil {
 			return res, e
 		}
 
-		res = append(res, s.convert.convertAlgoOrdersHistory(answ.List)...)
+		executed := make(map[string]entity.Futures_OrdersHistory, len(res))
+		var oldest int64
+		for _, order := range res {
+			executed[order.OrderID] = order
+			if oldest == 0 || order.CreateTime < oldest {
+				oldest = order.CreateTime
+			}
+		}
+
+		for _, order := range s.convert.convertAlgoOrdersHistory(answ.Orders, executed) {
+			// Past a full orders page the caller pages by the oldest createTime, so older rows would skip orders.
+			if isFullPage && order.CreateTime < oldest {
+				continue
+			}
+			res = append(res, order)
+		}
 	}
 
 	if s.orderID != nil && *s.orderID != "" {
@@ -185,30 +195,5 @@ type futures_ordersHistory_Response struct {
 	Time          int64  `json:"time"`
 	UpdateTime    int64  `json:"updateTime"`
 	TimeInForce   string `json:"timeInForce"`
-}
-
-type futures_algoOrdersHistoryPage struct {
-	List     []futures_algoOrdersHistoryItem `json:"list"`
-	NextPage bool                            `json:"nextPage"`
-}
-
-type futures_algoOrdersHistoryItem struct {
-	Symbol                string `json:"symbol"`
-	Size                  string `json:"size"`
-	ClientOID             string `json:"client_oid"`
-	CreateTime            string `json:"createTime"`
-	FilledQty             string `json:"filled_qty"`
-	Fee                   string `json:"fee"`
-	OrderID               string `json:"order_id"`
-	Price                 string `json:"price"`
-	PriceAvg              string `json:"price_avg"`
-	Status                string `json:"status"`
-	Type                  string `json:"type"`
-	OrderType             string `json:"order_type"`
-	TotalProfits          string `json:"totalProfits"`
-	TriggerPrice          string `json:"triggerPrice"`
-	TriggerPriceType      string `json:"triggerPriceType"`
-	TriggerTime           string `json:"triggerTime"`
-	PresetTakeProfitPrice string `json:"presetTakeProfitPrice"`
-	PresetStopLossPrice   string `json:"presetStopLossPrice"`
+	ReduceOnly    bool   `json:"reduceOnly"`
 }

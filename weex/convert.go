@@ -210,9 +210,11 @@ func (c *futures_converts) convertPositions(answ []futures_Position) (res []enti
 			PositionID:       utils.Int64ToString(item.ID),
 			EntryPrice:       entryPrice,
 			MarkPrice:        "",
+			LiquidationPrice: item.LiquidatePrice,
 			UnRealizedProfit: item.UnrealizePnl,
 			RealizedProfit:   "",
 			Notional:         item.OpenValue,
+			Margin:           weexPositionMargin(item),
 			// HedgeMode:        hedgeMode,
 			HedgeMode:  true,
 			MarginMode: strings.ToUpper(item.MarginType),
@@ -221,6 +223,13 @@ func (c *futures_converts) convertPositions(answ []futures_Position) (res []enti
 		})
 	}
 	return res
+}
+
+func weexPositionMargin(item futures_Position) string {
+	if item.MarginType == string(entity.MarginModeTypeIsolated) && utils.StringToFloat(item.IsolatedMargin) > 0 {
+		return item.IsolatedMargin
+	}
+	return item.MarginSize
 }
 
 func calcWeexPositionEntryPrice(item futures_Position) string {
@@ -304,85 +313,70 @@ func (c *futures_converts) convertCancelOrder(in futures_cancelOrder_Response) (
 	return out
 }
 
-func (c *futures_converts) convertAlgoOrdersHistory(in []futures_algoOrdersHistoryItem) (out []entity.Futures_OrdersHistory) {
+func (c *futures_converts) convertAlgoOrdersHistory(in []futures_algoOrder, executed map[string]entity.Futures_OrdersHistory) (out []entity.Futures_OrdersHistory) {
 	if len(in) == 0 {
 		return out
 	}
 
 	for _, item := range in {
-		// по вашему правилу history = только исполненные
-		// здесь status == "2" уже считается исполненным/сработавшим
-		if item.Status != "2" {
+		status := strings.ToUpper(item.AlgoStatus)
+		if status != "FILLED" && status != "TRIGGERED" {
 			continue
 		}
 
-		symbol := strings.ToUpper(strings.TrimSpace(item.Symbol))
-		symbol = strings.TrimPrefix(symbol, "CMT_")
+		typ := strings.ToUpper(item.OrderType)
+		positionSide := strings.ToUpper(item.PositionSide)
 
-		positionSide := ""
-		side := ""
-
-		switch item.Type {
-		case "1":
-			positionSide = "LONG"
-			side = "BUY"
-		case "2":
-			positionSide = "SHORT"
-			side = "SELL"
-		case "3", "5", "7", "9":
-			positionSide = "LONG"
-			side = "SELL"
-		case "4", "6", "8", "10":
-			positionSide = "SHORT"
-			side = "BUY"
-		}
-
-		orderType := strings.ToUpper(strings.TrimSpace(item.OrderType))
-		tpOrder := strings.Contains(orderType, "TAKE_PROFIT")
-		slOrder := orderType == "STOP" || orderType == "STOP_MARKET" || strings.Contains(orderType, "STOP_LOSS")
-
-		if orderType == "" {
-			orderType = "CONDITIONAL"
-		}
-
-		price := strings.TrimSpace(item.Price)
+		price := item.Price
 		if utils.StringToFloat(price) == 0 {
-			price = strings.TrimSpace(item.TriggerPrice)
+			price = item.TriggerPrice
 		}
 
-		executedPrice := strings.TrimSpace(item.PriceAvg)
+		executedPrice := item.ActualPrice
 		if utils.StringToFloat(executedPrice) == 0 {
 			executedPrice = price
 		}
 
-		updateTime := utils.StringToInt64(item.TriggerTime)
+		updateTime := item.TriggerTime
 		if updateTime == 0 {
-			updateTime = utils.StringToInt64(item.CreateTime)
+			updateTime = item.UpdateTime
 		}
 
-		out = append(out, entity.Futures_OrdersHistory{
-			Symbol:         symbol,
-			OrderID:        item.OrderID,
-			ClientOrderID:  item.ClientOID,
-			Side:           side,
-			PositionSide:   positionSide,
-			PositionSize:   item.Size,
-			ExecutedSize:   item.FilledQty,
-			Price:          price,
-			ExecutedPrice:  executedPrice,
-			RealisedProfit: item.TotalProfits,
-			Fee:            item.Fee,
-			FeeAsset:       "",
-			Leverage:       "",
-			HedgeMode:      false,
-			MarginMode:     "",
-			Type:           orderType,
-			Status:         "FILLED",
-			CreateTime:     utils.StringToInt64(item.CreateTime),
-			UpdateTime:     updateTime,
-			TpOrder:        tpOrder,
-			SlOrder:        slOrder,
-		})
+		row := entity.Futures_OrdersHistory{
+			Symbol:        item.Symbol,
+			OrderID:       strconv.FormatInt(item.AlgoId, 10),
+			ClientOrderID: item.ClientAlgoId,
+			Side:          strings.ToUpper(item.Side),
+			PositionSide:  positionSide,
+			PositionSize:  item.Quantity,
+			ExecutedSize:  item.Quantity,
+			Price:         price,
+			ExecutedPrice: executedPrice,
+			HedgeMode:     positionSide != "" && positionSide != "BOTH",
+			Type:          typ,
+			Status:        "FILLED",
+			CreateTime:    item.CreateTime,
+			UpdateTime:    updateTime,
+			TpOrder:       strings.HasPrefix(typ, "TAKE_PROFIT"),
+			SlOrder:       typ == "STOP" || typ == "STOP_MARKET",
+			ReduceOnly:    item.ReduceOnly || item.ClosePosition,
+		}
+
+		// A full-position TP/SL has quantity 0; the triggered order holds the fill.
+		if item.ActualOrderId != nil {
+			if order, ok := executed[strconv.FormatInt(*item.ActualOrderId, 10)]; ok {
+				if utils.StringToFloat(row.PositionSize) == 0 {
+					row.PositionSize = order.PositionSize
+				}
+				row.ExecutedSize = order.ExecutedSize
+				row.ExecutedPrice = order.ExecutedPrice
+				row.RealisedProfit = order.RealisedProfit
+				row.Fee = order.Fee
+				row.FeeAsset = order.FeeAsset
+			}
+		}
+
+		out = append(out, row)
 	}
 
 	return out
@@ -423,6 +417,7 @@ func (c *futures_converts) convertOrdersHistory(in []futures_ordersHistory_Respo
 			Status:         strings.ToUpper(item.Status),
 			CreateTime:     item.Time,
 			UpdateTime:     item.UpdateTime,
+			ReduceOnly:     item.ReduceOnly,
 		})
 	}
 	return out

@@ -97,6 +97,7 @@ type Futures_OrdersHistory struct {
 	UpdateTime int64 `json:"updateTime" bson:"updateTime"`
 	TpOrder    bool  `json:"tpOrder" bson:"tpOrder"`
 	SlOrder    bool  `json:"slOrder" bson:"slOrder"`
+	ReduceOnly bool  `json:"reduceOnly,omitempty" bson:"reduceOnly,omitempty"`
 }
 
 type Futures_ExecutionsHistory struct {
@@ -143,9 +144,11 @@ type Futures_Positions struct {
 	PositionID       string `json:"positionID" bson:"positionID"`
 	EntryPrice       string `json:"entryPrice" bson:"entryPrice"`
 	MarkPrice        string `json:"markPrice" bson:"markPrice"`
+	LiquidationPrice string `json:"liquidationPrice,omitempty" bson:"liquidationPrice,omitempty"`
 	UnRealizedProfit string `json:"unRealizedProfit" bson:"unRealizedProfit"`
 	RealizedProfit   string `json:"realizedProfit" bson:"realizedProfit"`
 	Notional         string `json:"notional" bson:"notional"`
+	Margin           string `json:"margin,omitempty" bson:"margin,omitempty"`
 	HedgeMode        bool   `json:"hedgeMode" bson:"hedgeMode"`
 	MarginMode       string `json:"marginMode" bson:"marginMode"`
 	CreateTime       int64  `json:"createTime" bson:"createTime"`

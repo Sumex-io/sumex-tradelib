@@ -122,24 +122,26 @@ func (s *futures_ordersHistory) Do(ctx context.Context, opts ...utils.RequestOpt
 
 type futures_ordersHistory_Response struct {
 	List []struct {
-		Symbol        string            `json:"symbol"`
-		OrderId       string            `json:"orderId"`
-		OrderLinkId   string            `json:"orderLinkId"`
-		StopOrderType string            `json:"stopOrderType"`
-		CreateType    string            `json:"createType"`
-		Side          string            `json:"side"`
-		PositionIdx   int64             `json:"positionIdx"`
-		Qty           string            `json:"qty"`
-		CumExecQty    string            `json:"cumExecQty"`
-		Price         string            `json:"price"`
-		TriggerPrice  string            `json:"triggerPrice"`
-		AvgPrice      string            `json:"avgPrice"`
-		CumExecFee    string            `json:"cumExecFee"`
-		CumFeeDetail  map[string]string `json:"cumFeeDetail"`
-		OrderType     string            `json:"orderType"`
-		OrderStatus   string            `json:"orderStatus"`
-		CreatedTime   string            `json:"createdTime"`
-		UpdatedTime   string            `json:"updatedTime"`
+		Symbol         string            `json:"symbol"`
+		OrderId        string            `json:"orderId"`
+		OrderLinkId    string            `json:"orderLinkId"`
+		StopOrderType  string            `json:"stopOrderType"`
+		CreateType     string            `json:"createType"`
+		Side           string            `json:"side"`
+		PositionIdx    int64             `json:"positionIdx"`
+		Qty            string            `json:"qty"`
+		CumExecQty     string            `json:"cumExecQty"`
+		Price          string            `json:"price"`
+		TriggerPrice   string            `json:"triggerPrice"`
+		AvgPrice       string            `json:"avgPrice"`
+		CumExecFee     string            `json:"cumExecFee"`
+		CumFeeDetail   map[string]string `json:"cumFeeDetail"`
+		OrderType      string            `json:"orderType"`
+		OrderStatus    string            `json:"orderStatus"`
+		ReduceOnly     bool              `json:"reduceOnly"`
+		CloseOnTrigger bool              `json:"closeOnTrigger"`
+		CreatedTime    string            `json:"createdTime"`
+		UpdatedTime    string            `json:"updatedTime"`
 	} `json:"list"`
 	NextPageCursor string `json:"nextPageCursor"`
 }
