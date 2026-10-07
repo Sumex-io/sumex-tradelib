@@ -10,6 +10,9 @@ import (
 	"github.com/Sumex-io/sumex-tradelib/utils"
 )
 
+// WEEX can answer a completed cancel with success:false and this code.
+const orderCanceledCode = "SUCCESS_ORDER_CANCELED"
+
 type futures_cancelOrder struct {
 	callAPI func(ctx context.Context, r *utils.Request, opts ...utils.RequestOption) (data []byte, header *http.Header, err error)
 	convert futures_converts
@@ -87,7 +90,7 @@ func (s *futures_cancelOrder) Do(ctx context.Context, opts ...utils.RequestOptio
 		return res, err
 	}
 
-	if !answ.Success {
+	if !answ.Success && answ.ErrorCode != orderCanceledCode && answ.ErrorMessage != orderCanceledCode {
 		if answ.ErrorMessage != "" {
 			return res, errors.New(answ.ErrorMessage)
 		}
