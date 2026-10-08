@@ -137,22 +137,23 @@ type Futures_UserTrades struct {
 }
 
 type Futures_Positions struct {
-	Symbol           string `json:"symbol" bson:"symbol"`
-	PositionSide     string `json:"positionSide" bson:"positionSide"`
-	PositionSize     string `json:"positionSize" bson:"positionSize"`
-	Leverage         string `json:"leverage" bson:"leverage"`
-	PositionID       string `json:"positionID" bson:"positionID"`
-	EntryPrice       string `json:"entryPrice" bson:"entryPrice"`
-	MarkPrice        string `json:"markPrice" bson:"markPrice"`
-	LiquidationPrice string `json:"liquidationPrice,omitempty" bson:"liquidationPrice,omitempty"`
-	UnRealizedProfit string `json:"unRealizedProfit" bson:"unRealizedProfit"`
-	RealizedProfit   string `json:"realizedProfit" bson:"realizedProfit"`
-	Notional         string `json:"notional" bson:"notional"`
-	Margin           string `json:"margin,omitempty" bson:"margin,omitempty"`
-	HedgeMode        bool   `json:"hedgeMode" bson:"hedgeMode"`
-	MarginMode       string `json:"marginMode" bson:"marginMode"`
-	CreateTime       int64  `json:"createTime" bson:"createTime"`
-	UpdateTime       int64  `json:"updateTime" bson:"updateTime"`
+	Symbol            string `json:"symbol" bson:"symbol"`
+	PositionSide      string `json:"positionSide" bson:"positionSide"`
+	PositionSize      string `json:"positionSize" bson:"positionSize"`
+	Leverage          string `json:"leverage" bson:"leverage"`
+	PositionID        string `json:"positionID" bson:"positionID"`
+	EntryPrice        string `json:"entryPrice" bson:"entryPrice"`
+	MarkPrice         string `json:"markPrice" bson:"markPrice"`
+	LiquidationPrice  string `json:"liquidationPrice,omitempty" bson:"liquidationPrice,omitempty"`
+	UnRealizedProfit  string `json:"unRealizedProfit" bson:"unRealizedProfit"`
+	RealizedProfit    string `json:"realizedProfit" bson:"realizedProfit"`
+	Notional          string `json:"notional" bson:"notional"`
+	Margin            string `json:"margin,omitempty" bson:"margin,omitempty"`
+	MaintenanceMargin string `json:"maintenanceMargin,omitempty" bson:"maintenanceMargin,omitempty"`
+	HedgeMode         bool   `json:"hedgeMode" bson:"hedgeMode"`
+	MarginMode        string `json:"marginMode" bson:"marginMode"`
+	CreateTime        int64  `json:"createTime" bson:"createTime"`
+	UpdateTime        int64  `json:"updateTime" bson:"updateTime"`
 }
 
 type Futures_OrdersList struct {
