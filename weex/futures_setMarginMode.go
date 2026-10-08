@@ -13,9 +13,8 @@ import (
 type futures_setMarginMode struct {
 	callAPI func(ctx context.Context, r *utils.Request, opts ...utils.RequestOption) (data []byte, header *http.Header, err error)
 
-	symbol       *string
-	marginMode   *entity.MarginModeType
-	positionMode *entity.PositionModeType
+	symbol     *string
+	marginMode *entity.MarginModeType
 }
 
 func (s *futures_setMarginMode) Symbol(symbol string) *futures_setMarginMode {
@@ -25,11 +24,6 @@ func (s *futures_setMarginMode) Symbol(symbol string) *futures_setMarginMode {
 
 func (s *futures_setMarginMode) MarginMode(marginMode entity.MarginModeType) *futures_setMarginMode {
 	s.marginMode = &marginMode
-	return s
-}
-
-func (s *futures_setMarginMode) PositionMode(positionMode entity.PositionModeType) *futures_setMarginMode {
-	s.positionMode = &positionMode
 	return s
 }
 
@@ -58,15 +52,6 @@ func (s *futures_setMarginMode) Do(ctx context.Context, opts ...utils.RequestOpt
 		m["marginType"] = "ISOLATED"
 	default:
 		return res, errors.New("unsupported margin mode")
-	}
-
-	if s.positionMode != nil {
-		switch *s.positionMode {
-		case entity.PositionModeTypeOneWay:
-			m["separatedType"] = "COMBINED"
-		case entity.PositionModeTypeHedge:
-			m["separatedType"] = "SEPARATED"
-		}
 	}
 
 	r.SetFormParams(m)
