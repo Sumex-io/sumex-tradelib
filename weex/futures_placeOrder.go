@@ -181,9 +181,6 @@ func (s *futures_placeOrder) doAlgoOrder(ctx context.Context, opts ...utils.Requ
 	if s.positionSide == nil {
 		return res, errors.New("position side is required")
 	}
-	if s.size == nil || *s.size == "" {
-		return res, errors.New("size is required")
-	}
 	if s.price == nil || *s.price == "" {
 		return res, errors.New("trigger price is required")
 	}
@@ -208,8 +205,12 @@ func (s *futures_placeOrder) doAlgoOrder(ctx context.Context, opts ...utils.Requ
 		"clientAlgoId": *s.clientOrderID,
 		"planType":     planType,
 		"triggerPrice": *s.price,
-		"quantity":     *s.size,
 		"positionSide": strings.ToUpper(string(*s.positionSide)),
+	}
+
+	// Without a quantity WeEx sets the TP/SL on the whole position; any quantity, even the full size, makes it partial.
+	if s.size != nil && *s.size != "" {
+		m["quantity"] = *s.size
 	}
 
 	r.SetFormParams(m)
