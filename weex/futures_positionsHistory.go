@@ -17,6 +17,10 @@ const (
 	weexUserTradesWindowMs  = int64(7 * 24 * time.Hour / time.Millisecond)
 	weexIncomeMaxRangeMs    = int64(100 * 24 * time.Hour / time.Millisecond)
 	weexLiquidationMatchMs  = int64(time.Minute / time.Millisecond)
+	// How far before the requested range the replay may reach for the opening fills of positions closed inside it.
+	weexOpenLookbackMs = int64(90 * 24 * time.Hour / time.Millisecond)
+	// /capi/v3/userTrades serves at most the past 365 days.
+	weexUserTradesMaxAgeMs = int64(365 * 24 * time.Hour / time.Millisecond)
 )
 
 type futures_positionsHistory struct {
@@ -73,12 +77,22 @@ func (s *futures_positionsHistory) Do(ctx context.Context, opts ...utils.Request
 		start = *s.startTime
 	}
 
-	fills, err := s.fetchFills(ctx, start, end, opts...)
+	fills, err := s.fetchFills(ctx, start, end, nil, opts...)
 	if err != nil {
 		return res, err
 	}
 
-	out := s.convert.convertPositionsHistory(fills)
+	fills, err = s.fetchOpeningFills(ctx, fills, start, opts...)
+	if err != nil {
+		return res, err
+	}
+
+	var out []entity.Futures_PositionsHistory
+	for _, position := range s.convert.convertPositionsHistory(fills) {
+		if position.UpdateTime >= start {
+			out = append(out, position)
+		}
+	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].UpdateTime != out[j].UpdateTime {
 			return out[i].UpdateTime > out[j].UpdateTime
@@ -162,8 +176,60 @@ type futures_income_Response struct {
 	} `json:"items"`
 }
 
-// fetchFills walks the range in the 7-day windows /capi/v3/userTrades accepts.
-func (s *futures_positionsHistory) fetchFills(ctx context.Context, start, end int64, opts ...utils.RequestOption) ([]entity.Futures_UserTrades, error) {
+// fetchOpeningFills prepends older 7-day windows until every position closed inside the range has its opening fills,
+// so it gets an open time and an entry; positions opened before the lookback keep CreateTime 0.
+func (s *futures_positionsHistory) fetchOpeningFills(ctx context.Context, fills []entity.Futures_UserTrades, start int64, opts ...utils.RequestOption) ([]entity.Futures_UserTrades, error) {
+	floor := start - weexOpenLookbackMs
+	if oldest := time.Now().UnixMilli() - weexUserTradesMaxAgeMs; floor < oldest {
+		floor = oldest
+	}
+
+	for windowEnd := start - 1; windowEnd >= floor; windowEnd -= weexUserTradesWindowMs {
+		symbols := unopenedPositionSymbols(s.convert.convertPositionsHistory(fills), start)
+		if len(symbols) == 0 {
+			break
+		}
+
+		// One symbol left is fetched alone; several share the unfiltered window.
+		var symbol *string
+		if len(symbols) == 1 {
+			for only := range symbols {
+				symbol = &only
+			}
+		}
+
+		windowStart := windowEnd - weexUserTradesWindowMs + 1
+		if windowStart < floor {
+			windowStart = floor
+		}
+
+		older, err := s.fetchFills(ctx, windowStart, windowEnd, symbol, opts...)
+		if err != nil {
+			return nil, err
+		}
+		fills = append(older, fills...)
+	}
+
+	return fills, nil
+}
+
+func unopenedPositionSymbols(positions []entity.Futures_PositionsHistory, start int64) map[string]struct{} {
+	symbols := make(map[string]struct{})
+	for _, position := range positions {
+		if position.CreateTime == 0 && position.UpdateTime >= start {
+			symbols[position.Symbol] = struct{}{}
+		}
+	}
+
+	return symbols
+}
+
+// fetchFills walks the range in the 7-day windows /capi/v3/userTrades accepts; symbol overrides the request's own.
+func (s *futures_positionsHistory) fetchFills(ctx context.Context, start, end int64, symbol *string, opts ...utils.RequestOption) ([]entity.Futures_UserTrades, error) {
+	if symbol == nil {
+		symbol = s.symbol
+	}
+
 	var fills []entity.Futures_UserTrades
 	seen := make(map[string]struct{})
 
@@ -175,8 +241,8 @@ func (s *futures_positionsHistory) fetchFills(ctx context.Context, start, end in
 
 		for page := 0; page < weexUserTradesMaxPages && lo <= hi; page++ {
 			req := (&futures_userTrades{callAPI: s.callAPI, convert: s.convert}).StartTime(lo).EndTime(hi).Limit(weexUserTradesPageLimit)
-			if s.symbol != nil && *s.symbol != "" {
-				req.Symbol(*s.symbol)
+			if symbol != nil && *symbol != "" {
+				req.Symbol(*symbol)
 			}
 
 			trades, err := req.Do(ctx, opts...)
