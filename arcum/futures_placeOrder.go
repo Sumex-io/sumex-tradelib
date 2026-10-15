@@ -1,4 +1,4 @@
-package xemus
+package arcum
 
 import (
 	"context"
@@ -115,14 +115,14 @@ func (s *futures_placeOrder) Do(ctx context.Context) (res []entity.PlaceOrder, e
 		return nil, errNoSymbol
 	}
 	if s.side == nil {
-		return nil, errors.New("xemus: placeOrder requires a side")
+		return nil, errors.New("arcum: placeOrder requires a side")
 	}
 	side := strings.ToUpper(strings.TrimSpace(string(*s.side)))
 	if side != "BUY" && side != "SELL" {
-		return nil, fmt.Errorf("xemus: unknown side %q (want BUY or SELL)", side)
+		return nil, fmt.Errorf("arcum: unknown side %q (want BUY or SELL)", side)
 	}
 	if s.size == nil {
-		return nil, errors.New("xemus: placeOrder requires a size")
+		return nil, errors.New("arcum: placeOrder requires a size")
 	}
 	quantity, err := wireNumber(*s.size, "size")
 	if err != nil {
@@ -133,7 +133,7 @@ func (s *futures_placeOrder) Do(ctx context.Context) (res []entity.PlaceOrder, e
 	if s.clientOrderID != nil {
 		clientOrderID = strings.TrimSpace(*s.clientOrderID)
 		if clientOrderID != "" && !clientOrderIDPattern.MatchString(clientOrderID) {
-			return nil, fmt.Errorf("xemus: clientOrderID %q must be 1-36 characters of A-Z, a-z, 0-9, _ or -", clientOrderID)
+			return nil, fmt.Errorf("arcum: clientOrderID %q must be 1-36 characters of A-Z, a-z, 0-9, _ or -", clientOrderID)
 		}
 	}
 	marginMode := ""
@@ -146,7 +146,7 @@ func (s *futures_placeOrder) Do(ctx context.Context) (res []entity.PlaceOrder, e
 	isTakeProfit := s.tpOrder != nil && *s.tpOrder
 	isStopLoss := s.slOrder != nil && *s.slOrder
 	if isTakeProfit && isStopLoss {
-		return nil, errors.New("xemus: an order cannot be both take-profit and stop-loss")
+		return nil, errors.New("arcum: an order cannot be both take-profit and stop-loss")
 	}
 
 	body := map[string]interface{}{"symbol": strings.TrimSpace(*s.symbol)}
@@ -184,7 +184,7 @@ func (s *futures_placeOrder) Do(ctx context.Context) (res []entity.PlaceOrder, e
 		body["order_quantity"] = quantity
 		if orderType != "MARKET" {
 			if !hasValue(s.price) {
-				return nil, fmt.Errorf("xemus: a %s order requires a price", orderType)
+				return nil, fmt.Errorf("arcum: a %s order requires a price", orderType)
 			}
 			price, err := wireNumber(*s.price, "price")
 			if err != nil {
@@ -236,7 +236,7 @@ func (s *futures_placeOrder) triggerLeg(side string, isTakeProfit bool) (map[str
 		raw = dedicated
 	}
 	if !hasValue(raw) {
-		return nil, fmt.Errorf("xemus: a %s order requires a trigger price", strings.ToLower(strings.ReplaceAll(algoType, "_", "-")))
+		return nil, fmt.Errorf("arcum: a %s order requires a trigger price", strings.ToLower(strings.ReplaceAll(algoType, "_", "-")))
 	}
 	trigger, err := wireNumber(*raw, "trigger price")
 	if err != nil {
@@ -261,12 +261,12 @@ func (s *futures_placeOrder) bracket(body map[string]interface{}, side string, q
 	}
 	// Orderly's bracket entry is MARKET or LIMIT only.
 	if orderType != "MARKET" && orderType != "LIMIT" {
-		return fmt.Errorf("xemus: a take-profit or stop-loss can only be attached to a MARKET or LIMIT order, not %s", orderType)
+		return fmt.Errorf("arcum: a take-profit or stop-loss can only be attached to a MARKET or LIMIT order, not %s", orderType)
 	}
 	// perp-api's bracket schema has no reduce_only and would strip it, turning a closing order
 	// into an opening one.
 	if s.reduce != nil && *s.reduce {
-		return errors.New("xemus: a take-profit or stop-loss cannot be attached to a reduce-only order")
+		return errors.New("arcum: a take-profit or stop-loss cannot be attached to a reduce-only order")
 	}
 
 	body["algo_type"] = "BRACKET"
@@ -275,7 +275,7 @@ func (s *futures_placeOrder) bracket(body map[string]interface{}, side string, q
 	body["quantity"] = quantity
 	if orderType == "LIMIT" {
 		if !hasValue(s.price) {
-			return errors.New("xemus: a LIMIT order requires a price")
+			return errors.New("arcum: a LIMIT order requires a price")
 		}
 		price, err := wireNumber(*s.price, "price")
 		if err != nil {
@@ -319,13 +319,13 @@ func (s *futures_placeOrder) bracket(body map[string]interface{}, side string, q
 
 func (s *futures_placeOrder) regularOrderType() (string, error) {
 	if s.orderType == nil || strings.TrimSpace(string(*s.orderType)) == "" {
-		return "", errors.New("xemus: placeOrder requires an order type")
+		return "", errors.New("arcum: placeOrder requires an order type")
 	}
 	switch t := strings.ToUpper(strings.TrimSpace(string(*s.orderType))); t {
 	case "MARKET", "LIMIT", "IOC", "FOK", "POST_ONLY":
 		return t, nil
 	default:
-		return "", fmt.Errorf("xemus: unsupported order type %q (want MARKET, LIMIT, IOC, FOK or POST_ONLY; use TpOrder/SlOrder for a trigger order)", t)
+		return "", fmt.Errorf("arcum: unsupported order type %q (want MARKET, LIMIT, IOC, FOK or POST_ONLY; use TpOrder/SlOrder for a trigger order)", t)
 	}
 }
 

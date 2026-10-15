@@ -1,4 +1,4 @@
-package xemus
+package arcum
 
 import (
 	"context"
@@ -76,7 +76,7 @@ func (s *futures_getLeverage) Do(ctx context.Context) (res entity.Futures_Levera
 		return res, err
 	}
 	if info.MaxLeverage == "" {
-		return res, errors.New("xemus: no leverage setting found for " + symbol)
+		return res, errors.New("arcum: no leverage setting found for " + symbol)
 	}
 	return leverageResult(symbol, info.MaxLeverage.String(), marginMode), nil
 }
@@ -127,7 +127,7 @@ func (s *futures_setLeverage) Do(ctx context.Context) (res entity.Futures_Levera
 		return res, errNoSymbol
 	}
 	if s.leverage == nil {
-		return res, errors.New("xemus: setLeverage requires a leverage")
+		return res, errors.New("arcum: setLeverage requires a leverage")
 	}
 	symbol := strings.TrimSpace(*s.symbol)
 	leverage, err := wireLeverage(*s.leverage)
@@ -215,7 +215,7 @@ func (s *futures_setMarginMode) Do(ctx context.Context) (res entity.Futures_Marg
 		return res, errNoSymbol
 	}
 	if s.marginMode == nil {
-		return res, errors.New("xemus: setMarginMode requires a margin mode")
+		return res, errors.New("arcum: setMarginMode requires a margin mode")
 	}
 	marginMode, err := wireMarginMode(*s.marginMode)
 	if err != nil {
@@ -249,6 +249,6 @@ func wireMarginMode(m string) (string, error) {
 	case "CROSS", "ISOLATED":
 		return v, nil
 	default:
-		return "", errors.New("xemus: margin mode must be CROSS or ISOLATED")
+		return "", errors.New("arcum: margin mode must be CROSS or ISOLATED")
 	}
 }

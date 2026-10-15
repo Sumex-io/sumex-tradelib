@@ -1,8 +1,8 @@
-// Package xemus is the connector for Xemus, Sumex's own perpetuals venue: perp-api, a service in front of
+// Package arcum is the connector for Arcum, Sumex's own perpetuals venue: perp-api, a service in front of
 // Orderly Network. It speaks perp-api's REST contract, not Orderly's directly — perp-api holds the
 // Orderly keys and exposes a per-user ed25519 API key pair, which is what this connector signs
 // with (see request.go).
-package xemus
+package arcum
 
 import (
 	"context"
@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	tradeName_Spot    = "XEMUS_SPOT"
-	tradeName_Futures = "XEMUS_FUTURES"
+	tradeName_Spot    = "ARCUM_SPOT"
+	tradeName_Futures = "ARCUM_FUTURES"
 )
 
 // perp-api has no public constant host: it is a Sumex deployment whose address differs per
@@ -47,7 +47,7 @@ func baseURLFor(demo bool) string {
 	return prodBaseURL
 }
 
-var errHostNotConfigured = errors.New("xemus: no perp-api host is configured for this environment")
+var errHostNotConfigured = errors.New("arcum: no perp-api host is configured for this environment")
 
 // ===============SPOT=================
 

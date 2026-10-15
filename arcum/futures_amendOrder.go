@@ -1,4 +1,4 @@
-package xemus
+package arcum
 
 import (
 	"context"
@@ -90,21 +90,21 @@ func (s *futures_amendOrder) Do(ctx context.Context) (res []entity.PlaceOrder, e
 	}
 	symbol := strings.TrimSpace(*s.symbol)
 	if s.orderID == nil {
-		return nil, errors.New("xemus: amendOrder requires an orderID")
+		return nil, errors.New("arcum: amendOrder requires an orderID")
 	}
 	orderID, isAlgo, err := parseOrderRef(*s.orderID)
 	if err != nil {
 		return nil, err
 	}
 	if !hasValue(s.newSize) && !hasValue(s.newPrice) && !hasValue(s.newClientOrderID) {
-		return nil, errors.New("xemus: amendOrder requires a new size, price or clientOrderID")
+		return nil, errors.New("arcum: amendOrder requires a new size, price or clientOrderID")
 	}
 	if s.tpOrder && s.slOrder {
-		return nil, errors.New("xemus: an amend changes a take-profit or a stop-loss, not both")
+		return nil, errors.New("arcum: an amend changes a take-profit or a stop-loss, not both")
 	}
 	if s.tpsl || s.tpOrder || s.slOrder {
 		if isAlgo {
-			return nil, fmt.Errorf("xemus: order %s is not a take-profit or stop-loss", strings.TrimSpace(*s.orderID))
+			return nil, fmt.Errorf("arcum: order %s is not a take-profit or stop-loss", strings.TrimSpace(*s.orderID))
 		}
 		return s.amendTpSl(ctx, symbol, orderID)
 	}
@@ -121,11 +121,11 @@ func (s *futures_amendOrder) Do(ctx context.Context) (res []entity.PlaceOrder, e
 		return nil, err
 	}
 	if original.Symbol != symbol {
-		return nil, fmt.Errorf("xemus: order %s is on %s, not %s", orderID, original.Symbol, symbol)
+		return nil, fmt.Errorf("arcum: order %s is on %s, not %s", orderID, original.Symbol, symbol)
 	}
 	side := strings.ToUpper(strings.TrimSpace(original.Side))
 	if s.side != nil && strings.TrimSpace(string(*s.side)) != "" && !strings.EqualFold(strings.TrimSpace(string(*s.side)), side) {
-		return nil, fmt.Errorf("xemus: order %s is a %s order; an edit cannot change its side", orderID, side)
+		return nil, fmt.Errorf("arcum: order %s is a %s order; an edit cannot change its side", orderID, side)
 	}
 	orderType := strings.ToUpper(strings.TrimSpace(original.Type))
 
@@ -153,7 +153,7 @@ func (s *futures_amendOrder) Do(ctx context.Context) (res []entity.PlaceOrder, e
 			return nil, err
 		}
 	} else if hasValue(s.newPrice) {
-		return nil, fmt.Errorf("xemus: a %s order has no price to amend", orderType)
+		return nil, fmt.Errorf("arcum: a %s order has no price to amend", orderType)
 	}
 
 	if original.ReduceOnly {
@@ -163,7 +163,7 @@ func (s *futures_amendOrder) Do(ctx context.Context) (res []entity.PlaceOrder, e
 	if hasValue(s.newClientOrderID) {
 		clientOrderID = strings.TrimSpace(*s.newClientOrderID)
 		if !clientOrderIDPattern.MatchString(clientOrderID) {
-			return nil, fmt.Errorf("xemus: clientOrderID %q must be 1-36 characters of A-Z, a-z, 0-9, _ or -", clientOrderID)
+			return nil, fmt.Errorf("arcum: clientOrderID %q must be 1-36 characters of A-Z, a-z, 0-9, _ or -", clientOrderID)
 		}
 		body["client_order_id"] = clientOrderID
 	}
@@ -188,7 +188,7 @@ func (s *futures_amendOrder) Do(ctx context.Context) (res []entity.PlaceOrder, e
 // every one of its legs; a POSITIONAL_TP_SL closes the whole position and has no size.
 func (s *futures_amendOrder) amendTpSl(ctx context.Context, symbol, orderID string) ([]entity.PlaceOrder, error) {
 	if hasValue(s.newClientOrderID) {
-		return nil, errors.New("xemus: a take-profit or stop-loss cannot be given a new clientOrderID")
+		return nil, errors.New("arcum: a take-profit or stop-loss cannot be given a new clientOrderID")
 	}
 	root, err := s.getAlgoOrder(ctx, symbol, orderID)
 	if err != nil {
@@ -210,11 +210,11 @@ func (s *futures_amendOrder) amendTpSl(ctx context.Context, symbol, orderID stri
 	}
 	switch {
 	case len(matches) == 0 && want == "":
-		return nil, fmt.Errorf("xemus: order %s has no open take-profit or stop-loss", orderID)
+		return nil, fmt.Errorf("arcum: order %s has no open take-profit or stop-loss", orderID)
 	case len(matches) == 0:
-		return nil, fmt.Errorf("xemus: order %s has no open %s", orderID, strings.ToLower(strings.ReplaceAll(want, "_", "-")))
+		return nil, fmt.Errorf("arcum: order %s has no open %s", orderID, strings.ToLower(strings.ReplaceAll(want, "_", "-")))
 	case len(matches) > 1:
-		return nil, fmt.Errorf("xemus: order %s has both a take-profit and a stop-loss; set TpOrder or SlOrder to say which one to amend", orderID)
+		return nil, fmt.Errorf("arcum: order %s has both a take-profit and a stop-loss; set TpOrder or SlOrder to say which one to amend", orderID)
 	}
 	target := matches[0]
 	if err := s.checkSide(orderID, target.leg.Side); err != nil {
@@ -224,7 +224,7 @@ func (s *futures_amendOrder) amendTpSl(ctx context.Context, symbol, orderID stri
 	var children []map[string]interface{}
 	if hasValue(s.newSize) {
 		if !strings.EqualFold(target.parent.AlgoType, "TP_SL") {
-			return nil, errors.New("xemus: a position take-profit / stop-loss closes the whole position and has no size to amend")
+			return nil, errors.New("arcum: a position take-profit / stop-loss closes the whole position and has no size to amend")
 		}
 		quantity, err := wireNumber(*s.newSize, "size")
 		if err != nil {
@@ -266,7 +266,7 @@ func (s *futures_amendOrder) amendTpSl(ctx context.Context, symbol, orderID stri
 // price, the level its row shows, and its quantity.
 func (s *futures_amendOrder) amendAlgo(ctx context.Context, symbol, orderID string) ([]entity.PlaceOrder, error) {
 	if hasValue(s.newClientOrderID) {
-		return nil, errors.New("xemus: an algo order cannot be given a new clientOrderID")
+		return nil, errors.New("arcum: an algo order cannot be given a new clientOrderID")
 	}
 	root, err := s.getAlgoOrder(ctx, symbol, orderID)
 	if err != nil {
@@ -280,11 +280,11 @@ func (s *futures_amendOrder) amendAlgo(ctx context.Context, symbol, orderID stri
 	switch algoType := strings.ToUpper(root.AlgoType); algoType {
 	case "BRACKET":
 		if root.IsTriggered {
-			return nil, fmt.Errorf("xemus: the entry of bracket %s has already been placed; amend its take-profit or stop-loss instead", orderID)
+			return nil, fmt.Errorf("arcum: the entry of bracket %s has already been placed; amend its take-profit or stop-loss instead", orderID)
 		}
 		if hasValue(s.newPrice) {
 			if strings.EqualFold(root.Type, "MARKET") {
-				return nil, errors.New("xemus: a MARKET order has no price to amend")
+				return nil, errors.New("arcum: a MARKET order has no price to amend")
 			}
 			if body["price"], err = wireNumber(*s.newPrice, "price"); err != nil {
 				return nil, err
@@ -297,7 +297,7 @@ func (s *futures_amendOrder) amendAlgo(ctx context.Context, symbol, orderID stri
 			}
 		}
 	default:
-		return nil, fmt.Errorf("xemus: a %s algo order cannot be amended here", algoType)
+		return nil, fmt.Errorf("arcum: a %s algo order cannot be amended here", algoType)
 	}
 	if hasValue(s.newSize) {
 		if body["quantity"], err = wireNumber(*s.newSize, "size"); err != nil {
@@ -325,7 +325,7 @@ func (s *futures_amendOrder) getAlgoOrder(ctx context.Context, symbol, orderID s
 		return root, err
 	}
 	if root.Symbol != symbol {
-		return root, fmt.Errorf("xemus: order %s is on %s, not %s", orderID, root.Symbol, symbol)
+		return root, fmt.Errorf("arcum: order %s is on %s, not %s", orderID, root.Symbol, symbol)
 	}
 	return root, nil
 }
@@ -334,7 +334,7 @@ func (s *futures_amendOrder) getAlgoOrder(ctx context.Context, symbol, orderID s
 func (s *futures_amendOrder) checkSide(orderID, orderSide string) error {
 	orderSide = strings.ToUpper(strings.TrimSpace(orderSide))
 	if s.side != nil && strings.TrimSpace(string(*s.side)) != "" && orderSide != "" && !strings.EqualFold(strings.TrimSpace(string(*s.side)), orderSide) {
-		return fmt.Errorf("xemus: order %s is a %s order; an edit cannot change its side", orderID, orderSide)
+		return fmt.Errorf("arcum: order %s is a %s order; an edit cannot change its side", orderID, orderSide)
 	}
 	return nil
 }
