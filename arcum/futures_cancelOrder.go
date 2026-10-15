@@ -1,4 +1,4 @@
-package xemus
+package arcum
 
 import (
 	"context"
@@ -54,7 +54,7 @@ func parseOrderRef(raw string) (id string, algo bool, err error) {
 	raw = strings.TrimSpace(raw)
 	id = strings.TrimPrefix(raw, algoOrderIDPrefix)
 	if !orderIDPattern.MatchString(id) {
-		return "", false, fmt.Errorf("xemus: orderID %q is not an order id", raw)
+		return "", false, fmt.Errorf("arcum: orderID %q is not an order id", raw)
 	}
 	return id, id != raw, nil
 }
@@ -69,7 +69,7 @@ func (s *futures_cancelOrder) Do(ctx context.Context) (res []entity.PlaceOrder, 
 		return nil, errNoSymbol
 	}
 	if s.orderID == nil {
-		return nil, errors.New("xemus: cancelOrder requires an orderID")
+		return nil, errors.New("arcum: cancelOrder requires an orderID")
 	}
 	orderID, isAlgo, err := parseOrderRef(*s.orderID)
 	if err != nil {

@@ -1,4 +1,4 @@
-package xemus
+package arcum
 
 import (
 	"context"
@@ -404,11 +404,11 @@ func TestBalanceKeepsUSDCRowWithoutUSDCHolding(t *testing.T) {
 func TestOrderListMergesRegularAndTpSlOrders(t *testing.T) {
 	f, c := newFakePerpAPI(t)
 	f.on("GET /v1/orders", 200, `{"rows":[
-		{"order_id":101,"client_order_id":"xemusABC","symbol":"PERP_BTC_USDC","side":"BUY","type":"POST_ONLY","status":"NEW","price":59000,"quantity":0.01,"executed":0,"average_executed_price":null,"created_time":1,"updated_time":2,"reduce_only":false},
+		{"order_id":101,"client_order_id":"arcumABC","symbol":"PERP_BTC_USDC","side":"BUY","type":"POST_ONLY","status":"NEW","price":59000,"quantity":0.01,"executed":0,"average_executed_price":null,"created_time":1,"updated_time":2,"reduce_only":false},
 		{"order_id":102,"client_order_id":12345,"symbol":"PERP_BTC_USDC","side":"SELL","type":"LIMIT","status":"PARTIAL_FILLED","price":70000,"quantity":0.02,"executed":0.005,"average_executed_price":70000,"created_time":3,"updated_time":4,"reduce_only":true}
 	],"meta":{"total":2}}`)
 	f.on("GET /v1/algo-orders", 200, `{"rows":[
-		{"algo_order_id":900,"client_order_id":"xemusTPxyz","symbol":"PERP_BTC_USDC","algo_type":"TP_SL","quantity":0.02,"is_triggered":false,"algo_status":"NEW","created_time":5,"updated_time":6,"child_orders":[
+		{"algo_order_id":900,"client_order_id":"arcumTPxyz","symbol":"PERP_BTC_USDC","algo_type":"TP_SL","quantity":0.02,"is_triggered":false,"algo_status":"NEW","created_time":5,"updated_time":6,"child_orders":[
 			{"algo_order_id":901,"algo_type":"TAKE_PROFIT","side":"SELL","type":"MARKET","trigger_price":72000,"is_triggered":false},
 			{"algo_order_id":902,"algo_type":"STOP_LOSS","side":"SELL","type":"LIMIT","trigger_price":55000,"price":54900,"is_triggered":false}
 		]},
@@ -425,7 +425,7 @@ func TestOrderListMergesRegularAndTpSlOrders(t *testing.T) {
 		t.Fatalf("got %d rows, want 5: %+v", len(got), got)
 	}
 	postOnly, closing, tp, sl, stop := got[0], got[1], got[2], got[3], got[4]
-	if postOnly.Type != "LIMIT" || postOnly.PositionSide != "LONG" || postOnly.Price != "59000" || postOnly.ClientOrderID != "xemusABC" {
+	if postOnly.Type != "LIMIT" || postOnly.PositionSide != "LONG" || postOnly.Price != "59000" || postOnly.ClientOrderID != "arcumABC" {
 		t.Errorf("post-only = %+v", postOnly)
 	}
 	if closing.ClientOrderID != "12345" || closing.PositionSide != "LONG" || closing.ExecutedSize != "0.005" || closing.Status != "PARTIAL_FILLED" {
@@ -448,7 +448,7 @@ func TestOrderListMergesRegularAndTpSlOrders(t *testing.T) {
 func TestOrdersHistory(t *testing.T) {
 	f, c := newFakePerpAPI(t)
 	f.on("GET /v1/orders", 200, `{"rows":[
-		{"order_id":101,"client_order_id":"xemusABC","symbol":"PERP_BTC_USDC","side":"SELL","type":"MARKET","status":"FILLED","price":null,"quantity":0.01,"executed":0.01,"total_executed_quantity":0.01,"average_executed_price":61000.5,"total_fee":0.3,"fee_asset":"USDC","created_time":1,"updated_time":2,"reduce_only":true,"margin_mode":"ISOLATED"}
+		{"order_id":101,"client_order_id":"arcumABC","symbol":"PERP_BTC_USDC","side":"SELL","type":"MARKET","status":"FILLED","price":null,"quantity":0.01,"executed":0.01,"total_executed_quantity":0.01,"average_executed_price":61000.5,"total_fee":0.3,"fee_asset":"USDC","created_time":1,"updated_time":2,"reduce_only":true,"margin_mode":"ISOLATED"}
 	],"meta":{"total":1}}`)
 
 	got, err := c.NewOrdersHistory().Symbol("PERP_BTC_USDC").StartTime(1000).EndTime(2000).Limit(9999).Do(ctx)
@@ -613,17 +613,17 @@ func TestSetLeverage(t *testing.T) {
 
 func TestPlaceLimitOrderSendsNumbers(t *testing.T) {
 	f, c := newFakePerpAPI(t)
-	f.on("POST /v1/orders", 201, `{"order_id":123,"client_order_id":"xemusABC","order_type":"LIMIT","order_price":65000.5,"order_quantity":0.01}`)
+	f.on("POST /v1/orders", 201, `{"order_id":123,"client_order_id":"arcumABC","order_type":"LIMIT","order_price":65000.5,"order_quantity":0.01}`)
 
-	got, err := c.NewPlaceOrder().Symbol("PERP_BTC_USDC").Side("buy").OrderType("limit").Size("0.01").Price("65000.5").ClientOrderID("xemusABC").Do(ctx)
+	got, err := c.NewPlaceOrder().Symbol("PERP_BTC_USDC").Side("buy").OrderType("limit").Size("0.01").Price("65000.5").ClientOrderID("arcumABC").Do(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got[0].OrderID != "123" || got[0].ClientOrderID != "xemusABC" || got[0].Ts == 0 {
+	if got[0].OrderID != "123" || got[0].ClientOrderID != "arcumABC" || got[0].Ts == 0 {
 		t.Errorf("got %+v", got)
 	}
 	r := f.only(t, "POST", "/v1/orders")
-	want := `{"client_order_id":"xemusABC","order_price":65000.5,"order_quantity":0.01,"order_type":"LIMIT","side":"BUY","symbol":"PERP_BTC_USDC"}`
+	want := `{"client_order_id":"arcumABC","order_price":65000.5,"order_quantity":0.01,"order_type":"LIMIT","side":"BUY","symbol":"PERP_BTC_USDC"}`
 	if r.body != want {
 		t.Errorf("body\n got %s\nwant %s", r.body, want)
 	}
@@ -654,10 +654,10 @@ func TestPlaceMarketReduceOnlyOmitsPrice(t *testing.T) {
 
 func TestPlaceTakeProfitIsSingleLegTpSl(t *testing.T) {
 	f, c := newFakePerpAPI(t)
-	f.on("POST /v1/algo-orders", 201, `{"order_id":900,"client_order_id":"xemusTPabc","algo_type":"TP_SL","quantity":0.02}`)
+	f.on("POST /v1/algo-orders", 201, `{"order_id":900,"client_order_id":"arcumTPabc","algo_type":"TP_SL","quantity":0.02}`)
 
 	// The platform's set-TP path: orderType LIMIT, the trigger level in price, no tpPrice.
-	got, err := c.NewPlaceOrder().Symbol("PERP_BTC_USDC").Side("SELL").OrderType("LIMIT").Size("0.02").Price("72000").ClientOrderID("xemusTPabc").TpOrder(true).Do(ctx)
+	got, err := c.NewPlaceOrder().Symbol("PERP_BTC_USDC").Side("SELL").OrderType("LIMIT").Size("0.02").Price("72000").ClientOrderID("arcumTPabc").TpOrder(true).Do(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -665,7 +665,7 @@ func TestPlaceTakeProfitIsSingleLegTpSl(t *testing.T) {
 		t.Errorf("got %+v", got)
 	}
 	r := f.only(t, "POST", "/v1/algo-orders")
-	want := `{"algo_type":"TP_SL","child_orders":[{"algo_type":"TAKE_PROFIT","side":"SELL","trigger_price":72000,"type":"MARKET"}],"client_order_id":"xemusTPabc","quantity":0.02,"symbol":"PERP_BTC_USDC"}`
+	want := `{"algo_type":"TP_SL","child_orders":[{"algo_type":"TAKE_PROFIT","side":"SELL","trigger_price":72000,"type":"MARKET"}],"client_order_id":"arcumTPabc","quantity":0.02,"symbol":"PERP_BTC_USDC"}`
 	if r.body != want {
 		t.Errorf("body\n got %s\nwant %s", r.body, want)
 	}
@@ -738,14 +738,14 @@ func TestCancelOrderRoutes(t *testing.T) {
 
 func TestAmendOrderKeepsUnchangedFields(t *testing.T) {
 	f, c := newFakePerpAPI(t)
-	f.on("GET /v1/orders/123", 200, `{"order_id":123,"client_order_id":"xemusABC","symbol":"PERP_BTC_USDC","side":"BUY","type":"POST_ONLY","status":"NEW","price":59000,"quantity":0.01,"executed":0,"average_executed_price":null,"created_time":1,"updated_time":2,"reduce_only":true}`)
+	f.on("GET /v1/orders/123", 200, `{"order_id":123,"client_order_id":"arcumABC","symbol":"PERP_BTC_USDC","side":"BUY","type":"POST_ONLY","status":"NEW","price":59000,"quantity":0.01,"executed":0,"average_executed_price":null,"created_time":1,"updated_time":2,"reduce_only":true}`)
 	f.on("PUT /v1/orders/123", 200, `{"status":"EDIT_SENT"}`)
 
 	got, err := c.NewAmendOrder().Symbol("PERP_BTC_USDC").OrderID("123").NewPrice("59500").Do(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got[0].OrderID != "123" || got[0].ClientOrderID != "xemusABC" {
+	if got[0].OrderID != "123" || got[0].ClientOrderID != "arcumABC" {
 		t.Errorf("got %+v", got)
 	}
 	r := f.only(t, "PUT", "/v1/orders/123")
@@ -780,17 +780,17 @@ func TestAmendOrderRefusals(t *testing.T) {
 
 func TestPlaceOrderWithTpSlIsBracket(t *testing.T) {
 	f, c := newFakePerpAPI(t)
-	f.on("POST /v1/algo-orders", 201, `{"order_id":800,"client_order_id":"xemusBR","algo_type":"BRACKET","quantity":0.01}`)
+	f.on("POST /v1/algo-orders", 201, `{"order_id":800,"client_order_id":"arcumBR","algo_type":"BRACKET","quantity":0.01}`)
 
-	got, err := c.NewPlaceOrder().Symbol("PERP_BTC_USDC").Side("BUY").OrderType("LIMIT").Size("0.01").Price("60000").TpPrice("70000").SlPrice("55000").ClientOrderID("xemusBR").MarginMode("cross").Do(ctx)
+	got, err := c.NewPlaceOrder().Symbol("PERP_BTC_USDC").Side("BUY").OrderType("LIMIT").Size("0.01").Price("60000").TpPrice("70000").SlPrice("55000").ClientOrderID("arcumBR").MarginMode("cross").Do(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got[0].OrderID != "algo-800" || got[0].ClientOrderID != "xemusBR" {
+	if got[0].OrderID != "algo-800" || got[0].ClientOrderID != "arcumBR" {
 		t.Errorf("got %+v", got)
 	}
 	r := f.only(t, "POST", "/v1/algo-orders")
-	want := `{"algo_type":"BRACKET","child_orders":[{"algo_type":"POSITIONAL_TP_SL","child_orders":[{"algo_type":"TAKE_PROFIT","side":"SELL","trigger_price":70000,"type":"CLOSE_POSITION"},{"algo_type":"STOP_LOSS","side":"SELL","trigger_price":55000,"type":"CLOSE_POSITION"}]}],"client_order_id":"xemusBR","margin_mode":"CROSS","price":60000,"quantity":0.01,"side":"BUY","symbol":"PERP_BTC_USDC","type":"LIMIT"}`
+	want := `{"algo_type":"BRACKET","child_orders":[{"algo_type":"POSITIONAL_TP_SL","child_orders":[{"algo_type":"TAKE_PROFIT","side":"SELL","trigger_price":70000,"type":"CLOSE_POSITION"},{"algo_type":"STOP_LOSS","side":"SELL","trigger_price":55000,"type":"CLOSE_POSITION"}]}],"client_order_id":"arcumBR","margin_mode":"CROSS","price":60000,"quantity":0.01,"side":"BUY","symbol":"PERP_BTC_USDC","type":"LIMIT"}`
 	if r.body != want {
 		t.Errorf("body\n got %s\nwant %s", r.body, want)
 	}
@@ -821,7 +821,7 @@ func TestOrderListBrackets(t *testing.T) {
 	f, c := newFakePerpAPI(t)
 	f.on("GET /v1/orders", 200, `{"rows":[]}`)
 	f.on("GET /v1/algo-orders", 200, `{"rows":[
-		{"algo_order_id":800,"root_algo_order_id":800,"client_order_id":"xemusBR","symbol":"PERP_BTC_USDC","algo_type":"BRACKET","side":"BUY","type":"LIMIT","price":60000,"quantity":0.01,"is_triggered":false,"algo_status":"NEW","child_orders":[
+		{"algo_order_id":800,"root_algo_order_id":800,"client_order_id":"arcumBR","symbol":"PERP_BTC_USDC","algo_type":"BRACKET","side":"BUY","type":"LIMIT","price":60000,"quantity":0.01,"is_triggered":false,"algo_status":"NEW","child_orders":[
 			{"algo_order_id":810,"algo_type":"POSITIONAL_TP_SL","is_triggered":false,"child_orders":[
 				{"algo_order_id":811,"algo_type":"TAKE_PROFIT","side":"SELL","type":"CLOSE_POSITION","trigger_price":70000,"is_triggered":false,"is_activated":false}
 			]}
@@ -872,7 +872,7 @@ func TestCancelAlgoRefRoutesToAlgoOrders(t *testing.T) {
 	}
 }
 
-const twoLegTpSl = `{"algo_order_id":900,"root_algo_order_id":900,"client_order_id":"xemusTP","symbol":"PERP_BTC_USDC","algo_type":"TP_SL","quantity":0.02,"is_triggered":false,"algo_status":"NEW","child_orders":[
+const twoLegTpSl = `{"algo_order_id":900,"root_algo_order_id":900,"client_order_id":"arcumTP","symbol":"PERP_BTC_USDC","algo_type":"TP_SL","quantity":0.02,"is_triggered":false,"algo_status":"NEW","child_orders":[
 	{"algo_order_id":901,"algo_type":"TAKE_PROFIT","side":"SELL","type":"MARKET","trigger_price":72000,"is_triggered":false,"is_activated":true},
 	{"algo_order_id":902,"algo_type":"STOP_LOSS","side":"SELL","type":"MARKET","trigger_price":55000,"is_triggered":false,"is_activated":true}
 ]}`
@@ -886,7 +886,7 @@ func TestAmendTpSlLegTriggerPrice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got[0].OrderID != "900" || got[0].ClientOrderID != "xemusTP" {
+	if got[0].OrderID != "900" || got[0].ClientOrderID != "arcumTP" {
 		t.Errorf("got %+v", got)
 	}
 	r := f.only(t, "PUT", "/v1/algo-orders/900")
@@ -933,7 +933,7 @@ func TestAmendBracketLegGoesThroughItsGroup(t *testing.T) {
 
 func TestAmendAlgoRefEntryAndStop(t *testing.T) {
 	f, c := newFakePerpAPI(t)
-	f.on("GET /v1/algo-orders/800", 200, `{"algo_order_id":800,"client_order_id":"xemusBR","symbol":"PERP_BTC_USDC","algo_type":"BRACKET","side":"BUY","type":"LIMIT","price":60000,"quantity":0.01,"is_triggered":false,"child_orders":[]}`)
+	f.on("GET /v1/algo-orders/800", 200, `{"algo_order_id":800,"client_order_id":"arcumBR","symbol":"PERP_BTC_USDC","algo_type":"BRACKET","side":"BUY","type":"LIMIT","price":60000,"quantity":0.01,"is_triggered":false,"child_orders":[]}`)
 	f.on("PUT /v1/algo-orders/800", 200, `{}`)
 	f.on("GET /v1/algo-orders/950", 200, `{"algo_order_id":950,"symbol":"PERP_BTC_USDC","algo_type":"STOP","side":"BUY","type":"MARKET","quantity":0.01,"trigger_price":75000,"is_triggered":false}`)
 	f.on("PUT /v1/algo-orders/950", 200, `{}`)
@@ -942,7 +942,7 @@ func TestAmendAlgoRefEntryAndStop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got[0].OrderID != "algo-800" || got[0].ClientOrderID != "xemusBR" {
+	if got[0].OrderID != "algo-800" || got[0].ClientOrderID != "arcumBR" {
 		t.Errorf("got %+v", got)
 	}
 	if r := f.only(t, "PUT", "/v1/algo-orders/800"); r.body != `{"price":60500,"quantity":0.02}` {

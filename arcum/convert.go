@@ -1,4 +1,4 @@
-package xemus
+package arcum
 
 import (
 	"encoding/json"
@@ -135,11 +135,11 @@ var plainPositiveDecimal = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?$`)
 func wireNumber(s, label string) (json.Number, error) {
 	s = strings.TrimSpace(s)
 	if !plainPositiveDecimal.MatchString(s) {
-		return "", fmt.Errorf("xemus: %s %q is not a plain decimal", label, s)
+		return "", fmt.Errorf("arcum: %s %q is not a plain decimal", label, s)
 	}
 	r, _ := parseRat(s)
 	if r.Sign() <= 0 {
-		return "", fmt.Errorf("xemus: %s must be greater than zero", label)
+		return "", fmt.Errorf("arcum: %s must be greater than zero", label)
 	}
 	return json.Number(s), nil
 }
@@ -149,11 +149,11 @@ func wireNumber(s, label string) (json.Number, error) {
 func wireLeverage(s string) (int64, error) {
 	r, ok := parseRat(s)
 	if !ok || !r.IsInt() {
-		return 0, fmt.Errorf("xemus: leverage %q must be a whole number", s)
+		return 0, fmt.Errorf("arcum: leverage %q must be a whole number", s)
 	}
 	v := r.Num()
 	if !v.IsInt64() || v.Int64() < 1 || v.Int64() > 100 {
-		return 0, fmt.Errorf("xemus: leverage %q must be between 1 and 100", s)
+		return 0, fmt.Errorf("arcum: leverage %q must be between 1 and 100", s)
 	}
 	return v.Int64(), nil
 }
@@ -183,7 +183,7 @@ func decodeRows(data []byte, out interface{}) error {
 func splitSymbol(symbol string) (base, quote string, err error) {
 	parts := strings.Split(symbol, "_")
 	if len(parts) != 3 || parts[0] != "PERP" || parts[1] == "" || parts[2] == "" {
-		return "", "", fmt.Errorf("xemus: unexpected symbol %q", symbol)
+		return "", "", fmt.Errorf("arcum: unexpected symbol %q", symbol)
 	}
 	return parts[1], parts[2], nil
 }
@@ -209,7 +209,7 @@ func normalizeOrderType(t string) string {
 	case "LIMIT", "IOC", "FOK", "POST_ONLY", "ASK", "BID":
 		return "LIMIT"
 	default:
-		log.Printf("xemus: unknown order type %q reported as LIMIT", t)
+		log.Printf("arcum: unknown order type %q reported as LIMIT", t)
 		return "LIMIT"
 	}
 }
@@ -485,7 +485,7 @@ func toAlgoOrders(root algoOrderRow) []entity.Futures_OrdersList {
 	default:
 		// TRAILING_STOP is not placed by this connector; showing it with a guessed type would
 		// invite an edit through the wrong fields.
-		log.Printf("xemus: open algo order %s of type %q not listed", rootID, root.AlgoType)
+		log.Printf("arcum: open algo order %s of type %q not listed", rootID, root.AlgoType)
 		return nil
 	}
 }
@@ -566,6 +566,6 @@ func sortInstruments(out []entity.Futures_InstrumentsInfo) {
 	sort.Slice(out, func(i, j int) bool { return out[i].Symbol < out[j].Symbol })
 }
 
-var errNoSymbol = errors.New("xemus: symbol is required")
+var errNoSymbol = errors.New("arcum: symbol is required")
 
 func formatInt(v int64) string { return strconv.FormatInt(v, 10) }

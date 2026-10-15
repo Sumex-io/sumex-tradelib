@@ -1,4 +1,4 @@
-package xemus
+package arcum
 
 import (
 	"context"
