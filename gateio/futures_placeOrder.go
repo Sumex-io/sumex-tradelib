@@ -215,8 +215,7 @@ func (s *futures_placeOrder) Do(ctx context.Context, opts ...utils.RequestOption
 		// -------- trigger --------
 		tr := gateioPriceOrderTrigger{
 			StrategyType: 0,
-			PriceType:    0,     // last price
-			Expiration:   86400, // 24h
+			PriceType:    0, // last price
 			Price:        *s.price,
 		}
 
@@ -375,7 +374,6 @@ type gateioPriceOrderTrigger struct {
 	StrategyType int    `json:"strategy_type"` // 0
 	PriceType    int    `json:"price_type"`    // 0 last price
 	Rule         int    `json:"rule"`          // 1 >=, 2 <=
-	Expiration   int    `json:"expiration"`    // seconds
 	Price        string `json:"price"`         // trigger price
 }
 
