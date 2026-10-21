@@ -124,8 +124,10 @@ func (c *SpotClient) signer() *katanaSigner {
 
 func (c *SpotClient) NewGetAccountInfo() *getAccountInfo {
 	return &getAccountInfo{
+		callAPI:       c.callAPI,
 		resolveWallet: c.resolveWallet,
 		sign:          c.signer(),
+		now:           time.Now,
 	}
 }
 
@@ -197,8 +199,10 @@ func (c *FuturesClient) signer() *katanaSigner {
 
 func (c *FuturesClient) NewGetAccountInfo() *getAccountInfo {
 	return &getAccountInfo{
+		callAPI:       c.callAPI,
 		resolveWallet: c.resolveWallet,
 		sign:          c.signer(),
+		now:           time.Now,
 	}
 }
 
