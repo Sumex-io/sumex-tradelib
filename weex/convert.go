@@ -233,16 +233,17 @@ func weexPositionMargin(item futures_Position) string {
 }
 
 func calcWeexPositionEntryPrice(item futures_Position) string {
-	cumOpenSize := utils.StringToFloat(item.CumOpenSize)
-	cumOpenValue := utils.StringToFloat(item.CumOpenValue)
-	if cumOpenSize != 0 && cumOpenValue != 0 {
-		return utils.FloatToStringAll(cumOpenValue / cumOpenSize)
-	}
-
 	size := utils.StringToFloat(item.Size)
 	openValue := utils.StringToFloat(item.OpenValue)
 	if size != 0 && openValue != 0 {
 		return utils.FloatToStringAll(openValue / size)
+	}
+
+	// cum* include already-closed parts of the position, so they are only a fallback.
+	cumOpenSize := utils.StringToFloat(item.CumOpenSize)
+	cumOpenValue := utils.StringToFloat(item.CumOpenValue)
+	if cumOpenSize != 0 && cumOpenValue != 0 {
+		return utils.FloatToStringAll(cumOpenValue / cumOpenSize)
 	}
 
 	return ""
