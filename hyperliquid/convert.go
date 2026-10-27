@@ -667,17 +667,20 @@ func (c *futures_converts) convertFuturesOrderList(in []hlFrontendOpenOrderFutur
 			rawType := strings.ToUpper(strings.TrimSpace(o.OrderType))
 			cond := strings.ToUpper(strings.TrimSpace(o.TriggerCondition))
 
+			// The trigger direction depends on the position side (a short's stop fires on
+			// "Price above"), so the order type decides first.
+			isTP := strings.Contains(rawType, "TAKE PROFIT")
+			isSL := strings.Contains(rawType, "STOP")
+			if !isTP && !isSL {
+				isTP = strings.Contains(cond, "PRICE ABOVE") || strings.Contains(cond, "TP") || strings.Contains(cond, "TAKE")
+				isSL = !isTP && (strings.Contains(cond, "PRICE BELOW") || strings.Contains(cond, "SL"))
+			}
+
 			switch {
-			case strings.Contains(rawType, "TAKE PROFIT"),
-				strings.Contains(cond, "PRICE ABOVE"),
-				strings.Contains(cond, "TP"),
-				strings.Contains(cond, "TAKE"):
+			case isTP:
 				typ = string(entity.OrderTypeTakeProfit)
 				tpOrder = true
-
-			case strings.Contains(rawType, "STOP"),
-				strings.Contains(cond, "PRICE BELOW"),
-				strings.Contains(cond, "SL"):
+			case isSL:
 				typ = string(entity.OrderTypeStop)
 				slOrder = true
 			}
