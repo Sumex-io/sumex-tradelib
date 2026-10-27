@@ -329,9 +329,10 @@ func (c *futures_converts) convertBalance(in futures_clearinghouseState) (out []
 		unrealized = utils.FloatToStringAll(utils.StringToFloat(unrealized) + utils.StringToFloat(item.Position.UnrealizedPnl))
 	}
 
-	balance := in.CrossMarginSummary.AccountValue
+	// crossMarginSummary leaves out isolated margin, so an isolated-only account reads 0.
+	balance := in.MarginSummary.AccountValue
 	if strings.TrimSpace(balance) == "" {
-		balance = in.MarginSummary.AccountValue
+		balance = in.CrossMarginSummary.AccountValue
 	}
 
 	out = append(out, entity.FuturesBalance{
