@@ -28,25 +28,35 @@ func (s *futures_getPositions) Category(category string) *futures_getPositions {
 }
 
 func (s *futures_getPositions) Do(ctx context.Context, opts ...utils.RequestOption) (res []entity.Futures_Positions, err error) {
+	m := utils.Params{"category": "linear", "limit": 200}
+	if s.symbol != nil {
+		m["symbol"] = *s.symbol
+	}
+	if s.category != nil {
+		m["category"] = *s.category
+	}
+	if s.symbol != nil || m["category"] == "inverse" {
+		return s.fetch(ctx, m, opts...)
+	}
+
+	// linear needs symbol or settleCoin, and USDT and USDC perps settle separately
+	for _, settleCoin := range []string{"USDT", "USDC"} {
+		m["settleCoin"] = settleCoin
+		list, err := s.fetch(ctx, m, opts...)
+		if err != nil {
+			return res, err
+		}
+		res = append(res, list...)
+	}
+	return res, nil
+}
+
+func (s *futures_getPositions) fetch(ctx context.Context, m utils.Params, opts ...utils.RequestOption) (res []entity.Futures_Positions, err error) {
 	r := &utils.Request{
 		Method:   http.MethodGet,
 		Endpoint: "/v5/position/list",
 		SecType:  utils.SecTypeSigned,
 	}
-
-	m := utils.Params{"category": "linear", "limit": 200}
-	if s.symbol != nil {
-		m["symbol"] = *s.symbol
-	} else {
-		m["settleCoin"] = "USDT"
-	}
-	if s.category != nil {
-		m["category"] = *s.category
-		if *s.category == "inverse" {
-			delete(m, "settleCoin")
-		}
-	}
-	// settleCoin need check
 	r.SetParams(m)
 
 	data, _, err := s.callAPI(ctx, r, opts...)
