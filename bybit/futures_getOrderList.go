@@ -28,28 +28,38 @@ func (s *futures_getOrderList) Category(category string) *futures_getOrderList {
 }
 
 func (s *futures_getOrderList) Do(ctx context.Context, opts ...utils.RequestOption) (res []entity.Futures_OrdersList, err error) {
-	r := &utils.Request{
-		Method:   http.MethodGet,
-		Endpoint: "/v5/order/realtime",
-		SecType:  utils.SecTypeSigned,
-	}
-
 	m := utils.Params{
 		"category": "linear",
 		"limit":    50,
 	}
 	if s.symbol != nil {
 		m["symbol"] = *s.symbol
-	} else {
-		m["settleCoin"] = "USDT"
 	}
 	if s.category != nil {
 		m["category"] = *s.category
-		if *s.category == "inverse" {
-			delete(m, "settleCoin")
-		}
 	}
-	// settleCoin need check
+	if s.symbol != nil || m["category"] == "inverse" {
+		return s.fetch(ctx, m, opts...)
+	}
+
+	// linear needs symbol or settleCoin, and USDT and USDC perps settle separately
+	for _, settleCoin := range []string{"USDT", "USDC"} {
+		m["settleCoin"] = settleCoin
+		list, err := s.fetch(ctx, m, opts...)
+		if err != nil {
+			return res, err
+		}
+		res = append(res, list...)
+	}
+	return res, nil
+}
+
+func (s *futures_getOrderList) fetch(ctx context.Context, m utils.Params, opts ...utils.RequestOption) (res []entity.Futures_OrdersList, err error) {
+	r := &utils.Request{
+		Method:   http.MethodGet,
+		Endpoint: "/v5/order/realtime",
+		SecType:  utils.SecTypeSigned,
+	}
 	r.SetParams(m)
 
 	data, _, err := s.callAPI(ctx, r, opts...)
