@@ -1,6 +1,7 @@
 package kucoin
 
 import (
+	"math"
 	"strings"
 	"time"
 
@@ -486,9 +487,16 @@ func (c *futures_converts) convertUserTrades(in []futures_userTrade) (out []enti
 		side := strings.ToUpper(item.Side)
 
 		// KuCoin reports size in contracts; every other exchange's Qty is in the base asset.
-		qty := ""
+		qty, closeQty := "", ""
 		if price := utils.StringToFloat(item.Price); price > 0 {
-			qty = utils.FloatToStringAll(utils.StringToFloat(item.Value) / price)
+			baseQty := utils.StringToFloat(item.Value) / price
+			qty = utils.FloatToStringAll(math.Round(baseQty*1e8) / 1e8)
+
+			// A one-way flip is one fill that both closes and opens; the fee split tells the parts apart.
+			closeFee := utils.StringToFloat(item.CloseFeePay)
+			if totalFee := closeFee + utils.StringToFloat(item.OpenFeePay); totalFee != 0 {
+				closeQty = utils.FloatToStringAll(math.Round(baseQty*closeFee/totalFee*1e8) / 1e8)
+			}
 		}
 
 		out = append(out, entity.Futures_UserTrades{
@@ -499,6 +507,7 @@ func (c *futures_converts) convertUserTrades(in []futures_userTrade) (out []enti
 			PositionSide:    strings.ToUpper(item.PositionSide),
 			Price:           item.Price,
 			Qty:             qty,
+			CloseQty:        closeQty,
 			QuoteQty:        item.Value,
 			Commission:      item.Fee,
 			CommissionAsset: item.FeeCurrency,

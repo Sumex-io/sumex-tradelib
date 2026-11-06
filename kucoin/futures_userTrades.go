@@ -96,6 +96,8 @@ type futures_userTrade struct {
 	Liquidity    string `json:"liquidity"`
 	Price        string `json:"price"`
 	Value        string `json:"value"`
+	OpenFeePay   string `json:"openFeePay"`
+	CloseFeePay  string `json:"closeFeePay"`
 	Fee          string `json:"fee"`
 	FeeCurrency  string `json:"feeCurrency"`
 	TradeTime    int64  `json:"tradeTime"`

@@ -53,6 +53,34 @@ func TestFuturesUserTradesParsesFillInBaseAsset(t *testing.T) {
 	}
 }
 
+func TestConvertUserTradesRoundsQtyFloatNoise(t *testing.T) {
+	var c futures_converts
+	out := c.convertUserTrades([]futures_userTrade{
+		{Price: "91.156", Value: "118.5028"},
+		{Price: "90.125", Value: "9.0125"},
+	})
+	if out[0].Qty != "1.3" || out[1].Qty != "0.1" {
+		t.Errorf("qty = %s, %s, want 1.3, 0.1", out[0].Qty, out[1].Qty)
+	}
+}
+
+func TestConvertUserTradesSplitsClosingPartByFee(t *testing.T) {
+	var c futures_converts
+	out := c.convertUserTrades([]futures_userTrade{
+		{Price: "89.875", Value: "143.8", OpenFeePay: "0.04314", CloseFeePay: "0.04314"},
+		{Price: "89.998", Value: "71.9984", OpenFeePay: "0.04319904", CloseFeePay: "0"},
+		{Price: "89.944", Value: "71.9552", OpenFeePay: "0", CloseFeePay: "0.04317312"},
+		{Price: "90", Value: "90", OpenFeePay: "0", CloseFeePay: "0"},
+	})
+	got := []string{out[0].CloseQty, out[1].CloseQty, out[2].CloseQty, out[3].CloseQty}
+	want := []string{"0.8", "0", "0.8", ""}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("closeQty[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
 func TestFuturesPositionsHistoryUsesEndpointParamNames(t *testing.T) {
 	var query url.Values
 	s := &futures_positionsHistory{callAPI: func(_ context.Context, r *utils.Request, _ ...utils.RequestOption) ([]byte, *http.Header, error) {
