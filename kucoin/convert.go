@@ -480,3 +480,32 @@ func (c *futures_converts) convertPositionsHistory(in []futures_PositionsHistory
 	}
 	return out
 }
+
+func (c *futures_converts) convertUserTrades(in []futures_userTrade) (out []entity.Futures_UserTrades) {
+	for _, item := range in {
+		side := strings.ToUpper(item.Side)
+
+		// KuCoin reports size in contracts; every other exchange's Qty is in the base asset.
+		qty := ""
+		if price := utils.StringToFloat(item.Price); price > 0 {
+			qty = utils.FloatToStringAll(utils.StringToFloat(item.Value) / price)
+		}
+
+		out = append(out, entity.Futures_UserTrades{
+			TradeID:         item.TradeID,
+			OrderID:         item.OrderID,
+			Symbol:          item.Symbol,
+			Side:            side,
+			PositionSide:    strings.ToUpper(item.PositionSide),
+			Price:           item.Price,
+			Qty:             qty,
+			QuoteQty:        item.Value,
+			Commission:      item.Fee,
+			CommissionAsset: item.FeeCurrency,
+			Buyer:           side == "BUY",
+			Maker:           strings.ToLower(item.Liquidity) == "maker",
+			Time:            item.TradeTime / int64(time.Millisecond),
+		})
+	}
+	return out
+}

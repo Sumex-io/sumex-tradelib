@@ -197,6 +197,10 @@ func (c *FuturesClient) NewOrdersHistory() *futures_ordersHistory {
 	return &futures_ordersHistory{callAPI: c.callAPI}
 }
 
+func (c *FuturesClient) NewUserTrades() *futures_userTrades {
+	return &futures_userTrades{callAPI: c.callAPI}
+}
+
 func (c *FuturesClient) NewGetListenKey() *spot_getListenKey {
 	return &spot_getListenKey{callAPI: c.callAPI}
 }
