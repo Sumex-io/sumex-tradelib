@@ -58,16 +58,16 @@ func (s *futures_positionsHistory) Do(ctx context.Context, opts ...utils.Request
 		m["symbol"] = *s.symbol
 	}
 	if s.limit != nil && *s.limit > 0 {
-		m["pageSize"] = *s.limit
+		m["limit"] = *s.limit
 	}
 	if s.page != nil && *s.page > 0 {
-		m["currentPage"] = *s.page
+		m["pageId"] = *s.page
 	}
 	if s.startTime != nil {
-		m["startAt"] = *s.startTime
+		m["from"] = *s.startTime
 	}
 	if s.endTime != nil {
-		m["endAt"] = *s.endTime
+		m["to"] = *s.endTime
 	}
 	r.SetParams(m)
 

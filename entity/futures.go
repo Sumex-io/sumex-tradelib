@@ -124,6 +124,7 @@ type Futures_UserTrades struct {
 	PositionSide    string `json:"positionSide" bson:"positionSide"`
 	Price           string `json:"price" bson:"price"`
 	Qty             string `json:"qty" bson:"qty"`
+	CloseQty        string `json:"closeQty,omitempty" bson:"closeQty,omitempty"`
 	QuoteQty        string `json:"quoteQty" bson:"quoteQty"`
 	Commission      string `json:"commission" bson:"commission"`
 	CommissionAsset string `json:"commissionAsset" bson:"commissionAsset"`
