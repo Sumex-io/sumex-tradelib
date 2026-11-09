@@ -344,6 +344,21 @@ func (c *futures_converts) convertBalance(in futures_clearinghouseState) (out []
 	return out
 }
 
+func (c *futures_converts) convertUnifiedBalance(perps futures_clearinghouseState, spot spot_spotClearinghouseState) (out []entity.FuturesBalance) {
+	out = c.convertBalance(perps)
+	total, hold := 0.0, 0.0
+	for _, item := range spot.Balances {
+		if item.Coin == "USDC" {
+			total, hold = utils.StringToFloat(item.Total), utils.StringToFloat(item.Hold)
+			break
+		}
+	}
+
+	out[0].Balance = utils.FloatToStringAll(total + utils.StringToFloat(out[0].UnrealizedProfit))
+	out[0].Available = utils.FloatToStringAll(math.Max(total-hold, 0))
+	return out
+}
+
 func (c *futures_converts) convertLeverage(in futures_clearinghouseState, symbol string, marginMode *entity.MarginModeType) (out entity.Futures_Leverage) {
 	for idx, item := range in.AssetPositions {
 		coin := strings.TrimSpace(item.Position.Coin)
