@@ -16,29 +16,44 @@ type futures_getBalance struct {
 }
 
 func (s *futures_getBalance) Do(ctx context.Context, opts ...utils.RequestOption) (res []entity.FuturesBalance, err error) {
-	r := &utils.Request{
-		Method:   http.MethodPost,
-		Endpoint: "/info",
-		SecType:  utils.SecTypeNone,
+	answ := futures_clearinghouseState{}
+	if err := s.info(ctx, "clearinghouseState", &answ, opts...); err != nil {
+		return res, err
 	}
 
+	var mode string
+	if err := s.info(ctx, "userAbstraction", &mode, opts...); err != nil {
+		return res, err
+	}
+	if mode != "unifiedAccount" && mode != "portfolioMargin" {
+		return s.convert.convertBalance(answ), nil
+	}
+
+	// Unified and portfolio-margin accounts keep collateral in the spot clearinghouse; perps withdrawable reads 0.
+	spot := spot_spotClearinghouseState{}
+	if err := s.info(ctx, "spotClearinghouseState", &spot, opts...); err != nil {
+		return res, err
+	}
+	return s.convert.convertUnifiedBalance(answ, spot), nil
+}
+
+func (s *futures_getBalance) info(ctx context.Context, infoType string, out interface{}, opts ...utils.RequestOption) error {
 	b, _ := json.Marshal(map[string]interface{}{
-		"type": "clearinghouseState",
+		"type": infoType,
 		"user": s.user,
 	})
-	r.BodyString = string(b)
+	r := &utils.Request{
+		Method:     http.MethodPost,
+		Endpoint:   "/info",
+		SecType:    utils.SecTypeNone,
+		BodyString: string(b),
+	}
 
 	data, _, err := s.callAPI(ctx, r, opts...)
 	if err != nil {
-		return res, err
+		return err
 	}
-
-	answ := futures_clearinghouseState{}
-	if err := json.Unmarshal(data, &answ); err != nil {
-		return res, err
-	}
-
-	return s.convert.convertBalance(answ), nil
+	return json.Unmarshal(data, out)
 }
 
 type futures_clearinghouseState struct {
