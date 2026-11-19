@@ -48,7 +48,13 @@ func (s *futures_getInstrumentsInfo) Do(ctx context.Context, opts ...utils.Reque
 		return res, err
 	}
 
-	return s.convert.convertInstrumentsInfo(answ.Symbols), nil
+	tradable, err := getApiTradingSymbols(ctx, s.callAPI, "/capi/v3/market/apiTradingSymbols", opts...)
+	if err != nil {
+		return res, err
+	}
+	instruments := keepApiTradable(answ.Symbols, func(item futures_instrumentsInfo) string { return item.Symbol }, tradable)
+
+	return s.convert.convertInstrumentsInfo(instruments), nil
 }
 
 type futures_exchangeInfoResponse struct {
