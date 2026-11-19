@@ -51,7 +51,13 @@ func (s *spot_getInstrumentsInfo) Do(ctx context.Context, opts ...utils.RequestO
 		return res, err
 	}
 
-	return s.convert.convertInstrumentsInfo(answ.Symbols), nil
+	tradable, err := getApiTradingSymbols(ctx, s.callAPI, "/api/v3/apiTradingSymbols", opts...)
+	if err != nil {
+		return res, err
+	}
+	instruments := keepApiTradable(answ.Symbols, func(item spot_instrumentsInfo) string { return item.Symbol }, tradable)
+
+	return s.convert.convertInstrumentsInfo(instruments), nil
 }
 
 type spot_exchangeInfoResponse struct {
